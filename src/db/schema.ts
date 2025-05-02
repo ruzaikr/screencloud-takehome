@@ -1,78 +1,74 @@
 import {
     pgTable,
-    serial,
     varchar,
     doublePrecision,
     integer,
-    text,
+    timestamp,
     primaryKey,
 } from "drizzle-orm/pg-core";
 
 export const products = pgTable("product", {
-    id: serial("id").primaryKey(),
-    name: varchar("name", {length: 255}),
-    price: doublePrecision("price"),
-    weight: doublePrecision("weight"),
+    id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
+    name: varchar("name", { length: 255 }).notNull(),
+    unit_price: doublePrecision("unit_price").notNull(),
+    weight: integer("weight").notNull(),
 });
 
 export const volumeDiscounts = pgTable(
     "volume_discounts",
     {
-        productId: integer("product_id")
-            .notNull()
-            .references(() => products.id),
-        volume: integer("volume")
-            .notNull(),
-        discountPct: doublePrecision("discount_pct")
-            .notNull(),
+        productId: integer("product_id").notNull().references(() => products.id),
+        threshold: integer("threshold").notNull(),
+        discount_percentage: doublePrecision("discount_percentage").notNull(),
     },
     (table) => ({
-        pk: primaryKey({columns: [table.productId, table.volume]})
+        pk: primaryKey({ columns: [table.productId, table.threshold] }),
     })
 );
 
 export const warehouses = pgTable("warehouses", {
-    id: serial("id").primaryKey(),
-    name: varchar("name", {length: 255}),
-    latitude: doublePrecision("latitude"),
-    longitude: doublePrecision("longitude"),
-})
+    id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
+    name: varchar("name", { length: 255 }).notNull(),
+    latitude: doublePrecision("latitude").notNull(),
+    longitude: doublePrecision("longitude").notNull(),
+});
 
-export const stocks = pgTable(
-    "stocks",
+export const currentInventory = pgTable(
+    "current_inventory",
     {
-        productId: integer("product_id")
-            .notNull()
-            .references(() => products.id),
-        warehouseId: integer("warehouse_id")
-            .notNull()
-            .references(() => warehouses.id),
-        remainingAmount: integer("remaining_amount"),
+        productId: integer("product_id").notNull().references(() => products.id),
+        warehouseId: integer("warehouse_id").notNull().references(() => warehouses.id),
+        remaining_quantity: integer("remaining_quantity").notNull(),
+        updated_at: timestamp("updated_at").notNull().defaultNow(),
     },
     (table) => ({
-        pk: primaryKey({columns: [table.productId, table.warehouseId]})
+        pk: primaryKey({ columns: [table.productId, table.warehouseId] }),
     })
 );
 
-export const orders = pgTable("order", {
-    id: serial("id").primaryKey(),
-    shippingAddress: text("shipping_address"),
-    totalPrice: doublePrecision("total_price"),
-    discount: doublePrecision("discount"),
-    shippingCost: doublePrecision("shipping_cost"),
-    createdAt: integer("created_at"),
+export const orders = pgTable("orders", {
+    id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
+    shipping_addr_latitude: doublePrecision("shipping_addr_latitude").notNull(),
+    shipping_addr_longitude: doublePrecision("shipping_addr_longitude").notNull(),
+    total_price: doublePrecision("total_price").notNull(),
+    discount: doublePrecision("discount").notNull(),
+    shipping_cost: doublePrecision("shipping_cost").notNull(),
+    created_at: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const orderLines = pgTable("order_line", {
-    id: serial("id").primaryKey(),
-    orderId: integer("order_id")
-        .notNull()
-        .references(() => orders.id),
-    productId: integer("product_id")
-        .notNull()
-        .references(() => products.id),
-    warehouseId: integer("warehouse_id")
-        .notNull()
-        .references(() => warehouses.id),
-    amount: integer("amount"),
+export const orderLines = pgTable("order_lines", {
+    id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
+    orderId: integer("order_id").notNull().references(() => orders.id),
+    productId: integer("product_id").notNull().references(() => products.id),
+    warehouseId: integer("warehouse_id").notNull().references(() => warehouses.id),
+    quantity: integer("quantity").notNull(),
+});
+
+export const inventoryLog = pgTable("inventory_log", {
+    productId: integer("product_id").notNull().references(() => products.id),
+    warehouseId: integer("warehouse_id").notNull().references(() => warehouses.id),
+    quantity_change: integer("quantity_change").notNull(),
+    change_type: varchar("change_type", { length: 50 }).notNull(),
+    reference_id: integer("reference_id").notNull(),
+    created_at: timestamp("created_at").notNull().defaultNow(),
 });
