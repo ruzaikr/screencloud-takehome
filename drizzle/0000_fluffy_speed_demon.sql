@@ -42,9 +42,9 @@ CREATE TABLE "product" (
 --> statement-breakpoint
 CREATE TABLE "volume_discounts" (
 	"product_id" integer NOT NULL,
-	"quantity" integer NOT NULL,
+	"threshold" integer NOT NULL,
 	"discount_percentage" double precision NOT NULL,
-	CONSTRAINT "volume_discounts_product_id_quantity_pk" PRIMARY KEY("product_id","quantity")
+	CONSTRAINT "volume_discounts_product_id_threshold_pk" PRIMARY KEY("product_id","threshold")
 );
 --> statement-breakpoint
 CREATE TABLE "warehouses" (

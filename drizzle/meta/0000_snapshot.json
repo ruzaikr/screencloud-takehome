@@ -1,5 +1,5 @@
 {
-  "id": "e7d61e09-e51b-481d-9786-9c582dfa418a",
+  "id": "6a82f8cc-865a-4c06-b622-9224ad0ec384",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -373,8 +373,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "quantity": {
-          "name": "quantity",
+        "threshold": {
+          "name": "threshold",
           "type": "integer",
           "primaryKey": false,
           "notNull": true
@@ -403,11 +403,11 @@
         }
       },
       "compositePrimaryKeys": {
-        "volume_discounts_product_id_quantity_pk": {
-          "name": "volume_discounts_product_id_quantity_pk",
+        "volume_discounts_product_id_threshold_pk": {
+          "name": "volume_discounts_product_id_threshold_pk",
           "columns": [
             "product_id",
-            "quantity"
+            "threshold"
           ]
         }
       },
