@@ -1,0 +1,136 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Orders API",
+    "version": "1.0.0",
+    "description": "API for validating and submitting orders"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3002",
+      "description": "Local dev server"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Service status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/validate": {
+      "post": {
+        "summary": "Compute cost & validity of a potential order",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Quotation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders": {
+      "post": {
+        "summary": "Submit an order",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "ok" },
+          "timestamp": { "type": "integer", "format": "int64" }
+        },
+        "required": ["status","timestamp"]
+      },
+      "OrderRequest": {
+        "type": "object",
+        "properties": {
+          "shippingAddress": {
+            "type": "object",
+            "properties": {
+              "latitude": { "type": "number" },
+              "longitude": { "type": "number" }
+            },
+            "required": ["latitude","longitude"]
+          },
+          "productId": { "type": "integer", "format": "int32" },
+          "quantity": { "type": "integer", "format": "int32" }
+        },
+        "required": ["shippingAddress","productId","quantity"]
+      },
+      "ValidateResponse": {
+        "type": "object",
+        "properties": {
+          "valid": { "type": "boolean" },
+          "totalProductCost": { "type": "number" },
+          "discount": { "type": "number" },
+          "shippingCost": { "type": "number" }
+        },
+        "required": ["valid","totalProductCost","discount","shippingCost"]
+      },
+      "OrderResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int32", "description": "Order number" },
+          "total_price": { "type": "number" },
+          "discount": { "type": "number" },
+          "shipping_cost": { "type": "number" },
+          "created_at": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id","total_price","discount","shipping_cost"]
+      }
+    }
+  }
+}
