@@ -11,8 +11,8 @@ export interface ProductPricingResult extends ProductQuantityRequest {
     unitPriceCents: number;
     weightGrams: number;
     discountPercentage: number;
-    totalPriceCents: number;           // New field
-    totalDiscountCents: number;        // New field
+    totalPriceCents: number;
+    totalDiscountCents: number;
     totalDiscountedPriceCents: number;
 }
 
