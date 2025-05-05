@@ -1,165 +1,336 @@
-import { db } from "../db/client";
+import { db } from '../db/client';
 import {
-    products,
-    volumeDiscounts,
-    warehouses,
-    currentInventory,
     orders,
     orderLines,
-    inventoryLog,
-} from "../db/schema";
-import { and, eq, lte } from "drizzle-orm";
-import { sql } from "drizzle-orm";
+    inventory,
+    inventoryLog
+} from '../db/schema';
+import { getAvailableInventoryByProducts, WarehouseInventoryMap } from '../repositories/inventoryRepository';
+import { calculateProductPricing, ProductPricingResult, ProductQuantityRequest } from '../repositories/productRepository';
+import { getReservedQuantitiesByWarehouse, ReservationsByWarehouse } from '../repositories/reservationRepository';
+import { getWarehouseShippingCosts, WarehouseShippingCost } from '../repositories/warehouseRepository';
+import { eq, and } from 'drizzle-orm';
 
-interface Allocation {
-    warehouseId: number;
-    allocatedQuantity: number;
-    shippingCost: number;
+// Define Quote interface for order pricing
+export interface Quote {
+    totalPriceCents: number;
+    totalDiscountCents: number;
+    totalShippingCostCents: number;
+    totalOrderCostCents: number; // This is the final cost with shipping included
 }
 
-interface Quote {
-    totalProductCost: number;
-    discount: number;
-    shippingCost: number;
-    isValid: boolean;
+// Define Allocation interface for inventory allocation
+export interface Allocation {
+    productId: string;
+    warehouseId: string;
+    quantity: number;
+}
+
+// Define the order request interface
+export interface OrderRequest {
+    productRequests: ProductQuantityRequest[];
+    shippingAddrLatitude: number;
+    shippingAddrLongitude: number;
+    salesRepReference?: string;
+    customerReference?: string;
+}
+
+// Define the order creation result
+export interface OrderCreationResult {
+    orderId: string;
+    quote: Quote;
     allocations: Allocation[];
 }
 
-// Haversine distance in km
-function toRad(deg: number): number {
-    return (deg * Math.PI) / 180;
-}
+/**
+ * Creates an order based on the product quantities, shipping location, and optional references
+ * @param orderRequest The order request containing product quantities and shipping information
+ * @returns The created order details including pricing and allocations
+ */
+export async function createOrder(orderRequest: OrderRequest): Promise<OrderCreationResult> {
+    const {
+        productRequests,
+        shippingAddrLatitude,
+        shippingAddrLongitude,
+        salesRepReference,
+        customerReference
+    } = orderRequest;
 
-function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371; // Earth radius km
-    const dLat = toRad(lat2 - lon1);
-    const dLon = toRad(lon2 - lon1);
-    const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-}
-
-export async function computeOrder(
-    { latitude, longitude }: { latitude: number; longitude: number },
-    productId: number,
-    quantity: number,
-): Promise<Quote> {
-    // 1. Fetch product
-    const productRow = await db
-        .select({ id: products.id, unitPrice: products.unit_price, weight: products.weight })
-        .from(products)
-        .where(eq(products.id, productId));
-    const product = productRow[0];
-    if (!product) throw new Error("Product not found");
-
-    const weightKg = product.weight / 1000;
-    const totalProductCost = product.unitPrice * quantity;
-
-    // 2. Volume discount
-    const discountRows = await db
-        .select({ threshold: volumeDiscounts.threshold, discount: volumeDiscounts.discount_percentage })
-        .from(volumeDiscounts)
-        .where(and(eq(volumeDiscounts.productId, productId), lte(volumeDiscounts.threshold, quantity)));
-    const best = discountRows.reduce(
-        (acc, row) => (row.threshold > acc.threshold ? row : acc),
-        { threshold: 0, discount: 0 }
-    );
-    const discountAmount = totalProductCost * best.discount;
-    const discountedTotal = totalProductCost - discountAmount;
-
-    // 3. Fetch all warehouses
-    const warehouseRows = await db
-        .select({ id: warehouses.id, lat: warehouses.latitude, lng: warehouses.longitude })
-        .from(warehouses);
-
-    // 4. Get inventory for this product
-    const currInventoryRows = await db
-        .select({ warehouseId: currentInventory.warehouseId, remainingQuantity: currentInventory.remaining_quantity })
-        .from(currentInventory)
-        .where(eq(currentInventory.productId, productId));
-    if (currInventoryRows.length === 0) throw new Error("Insufficient inventory");
-
-    const shippingRate = 0.01;
-    let unfulfilledQty = quantity;
-    let shippingCost = 0;
-    const allocations: Allocation[] = [];
-
-    // compute per-unit shipping cost per warehouse, only those with stock
-    const sortedWs = warehouseRows
-        .map((warehouseRow) => {
-            const warehouseCurrInventoryRow = currInventoryRows.find((element) => element.warehouseId === warehouseRow.id);
-            const remainingQtyInWarehouse = warehouseCurrInventoryRow ? warehouseCurrInventoryRow.remainingQuantity : 0;
-            const distanceToShippingAddress = distanceKm(latitude, longitude, warehouseRow.lat, warehouseRow.lng);
-            const warehouseShippingCostPerUnit = shippingRate * weightKg * distanceToShippingAddress;
-            return { warehouseId: warehouseRow.id, remainingQtyInWarehouse: remainingQtyInWarehouse, warehouseShippingCostPerUnit: warehouseShippingCostPerUnit };
-        })
-        .filter((w) => w.remainingQtyInWarehouse > 0)
-        .sort((a, b) => a.warehouseShippingCostPerUnit - b.warehouseShippingCostPerUnit);
-
-    for (const w of sortedWs) {
-        if (unfulfilledQty <= 0) break;
-        const qtyTakenFromWarehouse = Math.min(w.remainingQtyInWarehouse, unfulfilledQty);
-        const warehouseShippingCost = w.warehouseShippingCostPerUnit * qtyTakenFromWarehouse
-        shippingCost += warehouseShippingCost;
-        allocations.push({ warehouseId: w.warehouseId, allocatedQuantity: qtyTakenFromWarehouse, shippingCost: warehouseShippingCost });
-        unfulfilledQty -= qtyTakenFromWarehouse;
+    // Validate input
+    if (!productRequests.length) {
+        throw new Error('Order must contain at least one product');
     }
-    if (unfulfilledQty > 0) throw new Error("Insufficient inventory to fulfill order");
 
-    const isValid = shippingCost <= discountedTotal * 0.15;
-    return { totalProductCost, discount: discountAmount, shippingCost, isValid, allocations };
-}
+    // Step 1: Get product pricing information
+    const productIds = productRequests.map(req => req.productId);
+    const productPricing = await calculateProductPricing(productRequests);
 
-export async function submitOrder(
-    { latitude, longitude }: { latitude: number; longitude: number },
-    productId: number,
-    quantity: number,
-) {
-    return await db.transaction(async (tx) => {
-        const { totalProductCost, discount, shippingCost, isValid, allocations } =
-            await computeOrder({ latitude, longitude }, productId, quantity);
-        if (!isValid) throw new Error("Order invalid: shipping cost too high");
+    // Step 2: Get warehouse shipping costs sorted by cost
+    const warehouseShippingCosts = await getWarehouseShippingCosts(
+        shippingAddrLatitude,
+        shippingAddrLongitude
+    );
 
-        // Insert order
-        const [order] = await tx
+    // Step 3: Get available inventory for these products
+    const warehouseInventory = await getAvailableInventoryByProducts(productIds);
+
+    // Step 4: Get reserved quantities for these products
+    const reservedQuantities = await getReservedQuantitiesByWarehouse(productIds);
+
+    // Step 5: Allocate inventory and calculate shipping costs
+    const { allocations, totalShippingCostCents } = allocateInventory(
+        productPricing,
+        warehouseShippingCosts,
+        warehouseInventory,
+        reservedQuantities
+    );
+
+    // Ensure all products were allocated fully
+    validateAllocations(productPricing, allocations);
+
+    // Step 6: Calculate the final quote
+    const quote = calculateQuote(productPricing, totalShippingCostCents);
+
+    // Step 7: Create the order in a transaction to ensure consistency
+    const orderId = await db.transaction(async (tx) => {
+        // Insert the order
+        const [createdOrder] = await tx
             .insert(orders)
             .values({
-                shipping_addr_latitude: latitude,
-                shipping_addr_longitude: longitude,
-                total_price: totalProductCost,
-                discount,
-                shipping_cost: shippingCost,
+                shippingAddrLatitude: shippingAddrLatitude.toString(),
+                shippingAddrLongitude: shippingAddrLongitude.toString(),
+                totalPriceCents: quote.totalPriceCents,
+                discountCents: quote.totalDiscountCents,
+                shippingCostCents: quote.totalShippingCostCents,
+                salesRepReference: salesRepReference || null,
+                customerReference: customerReference || null,
             })
-            .returning({ id: orders.id, shipping_addr_latitude: orders.shipping_addr_latitude, shipping_addr_longitude: orders.shipping_addr_longitude, total_price: orders.total_price, discount: orders.discount, shipping_cost: orders.shipping_cost, created_at: orders.created_at });
+            .returning({ id: orders.id });
 
-        // Allocate & log per warehouse
-        for (const alloc of allocations) {
-            const [line] = await tx
-                .insert(orderLines)
-                .values({ orderId: order.id, productId, warehouseId: alloc.warehouseId, quantity: alloc.allocatedQuantity })
-                .returning({ id: orderLines.id });
+        // Insert the order lines
+        await tx
+            .insert(orderLines)
+            .values(
+                allocations.map(allocation => {
+                    // Find the corresponding pricing info
+                    const pricingInfo = productPricing.find(p => p.productId === allocation.productId);
+                    const unitPriceCents = pricingInfo?.unitPriceCents || 0;
+                    const discountPercentage = pricingInfo?.discountPercentage || 0; // This is a number
 
-            // decrement inventory
-            await tx.execute(sql`
-                UPDATE "current_inventory"
-                SET "remaining_quantity" = "remaining_quantity" - ${alloc.allocatedQuantity},
-                    "updated_at" = now()
-                WHERE "product_id" = ${productId} AND "warehouse_id" = ${alloc.warehouseId}
-            `);
+                    return {
+                        orderId: createdOrder.id,
+                        productId: allocation.productId,
+                        warehouseId: allocation.warehouseId,
+                        quantity: allocation.quantity,
+                        unitPriceCents: unitPriceCents, // Stays as number (assuming the schema expects number/integer)
+                        // Convert discountPercentage number to string
+                        discountPercentage: discountPercentage.toString(),
+                    };
+                })
+            );
 
-            // insert log
-            await tx.insert(inventoryLog).values({
-                productId,
-                warehouseId: alloc.warehouseId,
-                quantity_change: -alloc.allocatedQuantity,
-                change_type: "order",
-                reference_id: line.id,
-            });
+        // Update the inventory for each allocation
+        for (const allocation of allocations) {
+            // Get current inventory
+            const [currentInventory] = await tx
+                .select({ quantity: inventory.quantity })
+                .from(inventory)
+                .where(
+                    and(
+                        eq(inventory.productId, allocation.productId),
+                        eq(inventory.warehouseId, allocation.warehouseId)
+                    )
+                );
+
+            if (!currentInventory) {
+                throw new Error(`Inventory not found for product ${allocation.productId} in warehouse ${allocation.warehouseId}`);
+            }
+
+            // Calculate new quantity
+            const newQuantity = currentInventory.quantity - allocation.quantity;
+
+            // Update inventory
+            await tx
+                .update(inventory)
+                .set({
+                    quantity: newQuantity,
+                    updatedAt: new Date(),
+                })
+                .where(
+                    and(
+                        eq(inventory.productId, allocation.productId),
+                        eq(inventory.warehouseId, allocation.warehouseId)
+                    )
+                );
+
+            // Log the inventory change
+            await tx
+                .insert(inventoryLog)
+                .values({
+                    productId: allocation.productId,
+                    warehouseId: allocation.warehouseId,
+                    quantityChange: -allocation.quantity, // Negative for outgoing inventory
+                    newQuantity,
+                    changeType: 'ORDER_FULFILLMENT',
+                    referenceId: createdOrder.id,
+                });
         }
 
-        return order;
+        // Return the created order ID
+        return createdOrder.id;
     });
+
+    // Return the final result
+    return {
+        orderId,
+        quote,
+        allocations,
+    };
 }
+
+/**
+ * Allocates inventory from warehouses based on shipping costs
+ * @param productPricing Array of products with pricing information
+ * @param warehouseShippingCosts Warehouses with shipping costs sorted by cost
+ * @param warehouseInventory Available inventory by warehouse and product
+ * @param reservedQuantities Reserved quantities by warehouse and product
+ * @returns Allocations and total shipping cost
+ */
+function allocateInventory(
+    productPricing: ProductPricingResult[],
+    warehouseShippingCosts: WarehouseShippingCost[],
+    warehouseInventory: WarehouseInventoryMap,
+    reservedQuantities: ReservationsByWarehouse
+): { allocations: Allocation[], totalShippingCostCents: number } {
+    const allocations: Allocation[] = [];
+    let totalShippingCostCents = 0;
+
+    // For each product in the order
+    for (const product of productPricing) {
+        let remainingQuantity = product.quantity;
+
+        // Try to allocate from warehouses in order of shipping cost
+        for (const warehouse of warehouseShippingCosts) {
+            // Skip if already fulfilled
+            if (remainingQuantity <= 0) break;
+
+            const warehouseId = warehouse.warehouseId;
+
+            // Get inventory in this warehouse for this product
+            const availableInventory = warehouseInventory[warehouseId]?.[product.productId] || 0;
+
+            // Get reserved quantity in this warehouse for this product
+            const reservedQuantity = reservedQuantities[warehouseId]?.[product.productId] || 0;
+
+            // Calculate real available inventory
+            const realAvailableInventory = Math.max(0, availableInventory - reservedQuantity);
+
+            // Skip if no inventory available
+            if (realAvailableInventory <= 0) continue;
+
+            // Determine how much to allocate from this warehouse
+            const allocateQuantity = Math.min(remainingQuantity, realAvailableInventory);
+
+            if (allocateQuantity > 0) {
+                // Add allocation
+                allocations.push({
+                    productId: product.productId,
+                    warehouseId,
+                    quantity: allocateQuantity,
+                });
+
+                // Calculate shipping cost for this allocation
+                const allocatedWeightKg = (product.weightGrams * allocateQuantity) / 1000;
+                const shippingCost = Math.round(allocatedWeightKg * warehouse.shippingCostCentsPerKg);
+                totalShippingCostCents += shippingCost;
+
+                // Update remaining quantity
+                remainingQuantity -= allocateQuantity;
+            }
+        }
+    }
+
+    return { allocations, totalShippingCostCents };
+}
+
+/**
+ * Validates that all product quantities were fully allocated
+ * @param productPricing Array of products with pricing information
+ * @param allocations Array of inventory allocations
+ */
+function validateAllocations(
+    productPricing: ProductPricingResult[],
+    allocations: Allocation[]
+): void {
+    // Aggregate allocations by product
+    const allocatedQuantities: Record<string, number> = {};
+
+    for (const allocation of allocations) {
+        if (!allocatedQuantities[allocation.productId]) {
+            allocatedQuantities[allocation.productId] = 0;
+        }
+        allocatedQuantities[allocation.productId] += allocation.quantity;
+    }
+
+    // Validate each product was fully allocated
+    for (const product of productPricing) {
+        const allocatedQuantity = allocatedQuantities[product.productId] || 0;
+
+        if (allocatedQuantity < product.quantity) {
+            throw new Error(
+                `Insufficient inventory for product ${product.productId}. ` +
+                `Requested: ${product.quantity}, Available: ${allocatedQuantity}`
+            );
+        }
+    }
+}
+
+/**
+ * Calculates the final order quote including shipping
+ * @param productPricing Array of products with pricing information
+ * @param totalShippingCostCents Total shipping cost in cents
+ * @returns The final quote
+ */
+function calculateQuote(
+    productPricing: ProductPricingResult[],
+    totalShippingCostCents: number
+): Quote {
+    // Sum up the pricing components
+    let totalPriceCents = 0;
+    let totalDiscountCents = 0;
+
+    for (const product of productPricing) {
+        totalPriceCents += product.totalPriceCents;
+        totalDiscountCents += product.totalDiscountCents;
+    }
+
+    const totalDiscountedPriceCents = totalPriceCents - totalDiscountCents;
+    const totalOrderCostCents = totalDiscountedPriceCents + totalShippingCostCents;
+
+    return {
+        totalPriceCents,
+        totalDiscountCents,
+        totalShippingCostCents,
+        totalOrderCostCents,
+    };
+}
+
+/**
+ * Example usage:
+ *
+ * import { createOrder } from './orderService';
+ *
+ * const orderResult = await createOrder({
+ *   productRequests: [
+ *     { productId: 'product-uuid-1', quantity: 5 },
+ *     { productId: 'product-uuid-2', quantity: 3 },
+ *   ],
+ *   shippingAddrLatitude: 37.7749,
+ *   shippingAddrLongitude: -122.4194,
+ *   salesRepReference: 'SR-12345',
+ *   customerReference: 'CUST-6789',
+ * });
+ *
+ * console.log(`Order created with ID: ${orderResult.orderId}`);
+ * console.log(`Total order cost: ${orderResult.quote.totalOrderCostCents / 100}`);
+ */
