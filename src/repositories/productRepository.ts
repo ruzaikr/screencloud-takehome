@@ -3,7 +3,7 @@ import { products, volumeDiscounts } from '../db/schema';
 import {inArray} from "drizzle-orm";
 
 export interface ProductQuantityRequest {
-    productId: string;
+    productId: string; // UUID in the schema
     quantity: number;
 }
 
@@ -11,6 +11,8 @@ export interface ProductPricingResult extends ProductQuantityRequest {
     unitPriceCents: number;
     weightGrams: number;
     discountPercentage: number;
+    totalPriceCents: number;           // New field
+    totalDiscountCents: number;        // New field
     totalDiscountedPriceCents: number;
 }
 
@@ -98,11 +100,10 @@ export async function calculateProductPricing(
         const discounts = discountsByProduct[req.productId] || [];
         const discountPercentage = calculateDiscountPercentage(req.quantity, discounts);
 
-        // Calculate the total discounted price
-        const discountMultiplier = 1 - (discountPercentage / 100);
-        const totalDiscountedPriceCents = Math.round(
-            productDetail.unitPriceCents * req.quantity * discountMultiplier
-        );
+        // Calculate all price components
+        const totalPriceCents = productDetail.unitPriceCents * req.quantity;
+        const totalDiscountCents = Math.round(totalPriceCents * (discountPercentage / 100));
+        const totalDiscountedPriceCents = totalPriceCents - totalDiscountCents;
 
         return {
             productId: req.productId,
@@ -110,6 +111,8 @@ export async function calculateProductPricing(
             unitPriceCents: productDetail.unitPriceCents,
             weightGrams: productDetail.weightGrams,
             discountPercentage,
+            totalPriceCents,
+            totalDiscountCents,
             totalDiscountedPriceCents,
         };
     });
