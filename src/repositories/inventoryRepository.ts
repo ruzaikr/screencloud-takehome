@@ -1,33 +1,51 @@
 import { db } from '../db/client';
-import { inArray } from 'drizzle-orm';
 import { inventory } from '../db/schema';
+import { inArray } from 'drizzle-orm';
 
 /**
- * Maps product IDs to their available quantities
+ * Describes the structure for reporting inventory, organized by warehouse and then by product.
+ * Example:
+ * {
+ *   "warehouseId_A": {
+ *     "productId_X": 100,
+ *     "productId_Y": 50
+ *   },
+ *   "warehouseId_B": {
+ *     "productId_X": 75
+ *   }
+ * }
  */
-export interface ProductInventoryMap {
-    [productId: string]: number;
+export interface ProductInventoryByWarehouse {
+    [warehouseId: string]: {
+        [productId: string]: number;
+    };
 }
 
 /**
- * Maps warehouse IDs to their product inventory
+ * Retrieves the current inventory quantities for a given list of product IDs,
+ * categorized by warehouse.
+ *
+ * This function queries the `inventory` table to find all stock records
+ * for the specified product IDs. It then aggregates this data into a nested
+ * object structure where the top-level keys are warehouse IDs, and their
+ * values are objects mapping product IDs to their respective quantities in that
+ * warehouse.
+ *
+ * @param productIds - An array of product ID strings (UUIDs).
+ * @returns A promise that resolves to a `ProductInventoryByWarehouse` object.
+ *          If a product ID from the input list has no inventory in any warehouse,
+ *          it will not be included in the result. If a warehouse does not stock
+ *          any of the requested products, that warehouse ID will not appear as a
+ *          key in the result. If the `productIds` array is empty, an empty
+ *          object is returned.
  */
-export interface WarehouseInventoryMap {
-    [warehouseId: string]: ProductInventoryMap;
-}
-
-/**
- * Returns available inventory for specified products across all warehouses
- * @param productIds Array of product UUIDs to query
- * @returns A map where keys are warehouse IDs and values are maps of product IDs to quantities
- */
-export async function getAvailableInventoryByProducts(productIds: string[]): Promise<WarehouseInventoryMap> {
-    // Return empty result if no product IDs provided
-    if (!productIds.length) {
+export async function getInventoryForProducts(
+    productIds: string[]
+): Promise<ProductInventoryByWarehouse> {
+    if (!productIds || productIds.length === 0) {
         return {};
     }
 
-    // Query inventory for the specified products
     const inventoryRows = await db
         .select({
             productId: inventory.productId,
@@ -37,32 +55,14 @@ export async function getAvailableInventoryByProducts(productIds: string[]): Pro
         .from(inventory)
         .where(inArray(inventory.productId, productIds));
 
-    // Create the nested map structure using plain objects
-    const result: WarehouseInventoryMap = {};
+    const result: ProductInventoryByWarehouse = {};
 
-    // Populate the result map
     for (const inventoryRow of inventoryRows) {
-        const { warehouseId, productId, quantity } = inventoryRow;
-
-        // If this warehouse isn't in the result map yet, initialize it
-        if (!result[warehouseId]) {
-            result[warehouseId] = {};
+        if (!result[inventoryRow.warehouseId]) {
+            result[inventoryRow.warehouseId] = {};
         }
-
-        // Set the quantity for this product in this warehouse
-        result[warehouseId][productId] = quantity;
+        result[inventoryRow.warehouseId][inventoryRow.productId] = inventoryRow.quantity;
     }
 
     return result;
 }
-
-/**
- * Example usage:
- *
- * import { getAvailableInventoryByProducts } from './inventoryRepository';
- *
- * const inventoryMap = await getAvailableInventoryByProducts(['product-id-1', 'product-id-2']);
- *
- * // To get quantity of a specific product in a specific warehouse:
- * const quantity = inventoryMap['warehouse-id']?.[product-id] || 0;
- */

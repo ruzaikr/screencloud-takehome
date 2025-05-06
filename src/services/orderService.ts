@@ -5,7 +5,7 @@ import {
     inventory,
     inventoryLog
 } from '../db/schema';
-import { getAvailableInventoryByProducts, WarehouseInventoryMap } from '../repositories/inventoryRepository';
+import { getInventoryForProducts, ProductInventoryByWarehouse } from '../repositories/inventoryRepository';
 import { calculateProductPricing, ProductPricingResult, ProductQuantityRequest } from '../repositories/productRepository';
 import { getReservedQuantitiesByWarehouse, ReservationsByWarehouse } from '../repositories/reservationRepository';
 import { getWarehouseShippingCosts, WarehouseShippingCost } from '../repositories/warehouseRepository';
@@ -72,7 +72,7 @@ export async function createOrder(orderRequest: OrderRequest): Promise<OrderCrea
     );
 
     // Step 3: Get available inventory for these products
-    const warehouseInventory = await getAvailableInventoryByProducts(productIds);
+    const warehouseInventory = await getInventoryForProducts(productIds);
 
     // Step 4: Get reserved quantities for these products
     const reservedQuantities = await getReservedQuantitiesByWarehouse(productIds);
@@ -199,7 +199,7 @@ export async function createOrder(orderRequest: OrderRequest): Promise<OrderCrea
 function allocateInventory(
     productPricing: ProductPricingResult[],
     warehouseShippingCosts: WarehouseShippingCost[],
-    warehouseInventory: WarehouseInventoryMap,
+    warehouseInventory: ProductInventoryByWarehouse,
     reservedQuantities: ReservationsByWarehouse
 ): { allocations: Allocation[], totalShippingCostCents: number } {
     const allocations: Allocation[] = [];
