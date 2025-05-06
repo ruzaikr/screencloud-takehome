@@ -8,7 +8,7 @@ import {
 import { getInventoryForProducts, ProductInventoryByWarehouse } from '../repositories/inventoryRepository';
 import { calculateProductPricing, ProductPricingResult, ProductQuantityRequest } from '../repositories/productRepository';
 import { getReservedQuantitiesByWarehouse, ReservationsByWarehouse } from '../repositories/reservationRepository';
-import { getWarehouseShippingCosts, WarehouseShippingCost } from '../repositories/warehouseRepository';
+import { getWarehousesSortedByShippingCost, WarehouseShippingInfo } from '../repositories/warehouseRepository';
 import { eq, and } from 'drizzle-orm';
 
 // Define Quote interface for order pricing
@@ -66,7 +66,7 @@ export async function createOrder(orderRequest: OrderRequest): Promise<OrderCrea
     const productPricing = await calculateProductPricing(productRequests);
 
     // Step 2: Get warehouse shipping costs sorted by cost
-    const warehouseShippingCosts = await getWarehouseShippingCosts(
+    const warehouseShippingCosts = await getWarehousesSortedByShippingCost(
         shippingAddrLatitude,
         shippingAddrLongitude
     );
@@ -198,7 +198,7 @@ export async function createOrder(orderRequest: OrderRequest): Promise<OrderCrea
  */
 function allocateInventory(
     productPricing: ProductPricingResult[],
-    warehouseShippingCosts: WarehouseShippingCost[],
+    warehouseShippingCosts: WarehouseShippingInfo[],
     warehouseInventory: ProductInventoryByWarehouse,
     reservedQuantities: ReservationsByWarehouse
 ): { allocations: Allocation[], totalShippingCostCents: number } {
