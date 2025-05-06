@@ -1,4 +1,4 @@
-import { db } from '../db/client';
+import type { AppTransactionExecutor } from '../db/client';
 import { inventory } from '../db/schema';
 import { inArray } from 'drizzle-orm';
 
@@ -25,13 +25,16 @@ export interface ProductInventoryByWarehouse {
  * Retrieves the current inventory quantities for a given list of product IDs,
  * categorized by warehouse.
  *
- * This function queries the `inventory` table to find all stock records
- * for the specified product IDs. It then aggregates this data into a nested
- * object structure where the top-level keys are warehouse IDs, and their
- * values are objects mapping product IDs to their respective quantities in that
- * warehouse.
+ * It queries the `inventory` table using the provided transaction to find all
+ * stock records for the specified product IDs. It then aggregates this data
+ * into a nested object structure where the top-level keys are warehouse IDs,
+ * and their values are objects mapping product IDs to their respective
+ * quantities in that warehouse.
  *
  * @param productIds - An array of product ID strings (UUIDs).
+ * @param transactionExecutor - A Drizzle transaction object. This object must have been
+ *                            obtained from a Drizzle instance initialized with the schema
+ *                            (e.g., `db = drizzle(pool, { schema })`).
  * @returns A promise that resolves to a `ProductInventoryByWarehouse` object.
  *          If a product ID from the input list has no inventory in any warehouse,
  *          it will not be included in the result. If a warehouse does not stock
@@ -40,13 +43,14 @@ export interface ProductInventoryByWarehouse {
  *          object is returned.
  */
 export async function getInventoryForProducts(
-    productIds: string[]
+    productIds: string[],
+    transactionExecutor: AppTransactionExecutor
 ): Promise<ProductInventoryByWarehouse> {
     if (!productIds || productIds.length === 0) {
         return {};
     }
 
-    const inventoryRows = await db
+    const inventoryRows = await transactionExecutor
         .select({
             productId: inventory.productId,
             warehouseId: inventory.warehouseId,
