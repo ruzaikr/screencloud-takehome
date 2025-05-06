@@ -7,7 +7,7 @@ import {
 } from '../db/schema';
 import { getInventoryForProducts, ProductInventoryByWarehouse } from '../repositories/inventoryRepository';
 import { calculateProductCostsWithDiscounts, ProductCostDetails, ProductQuantityInput } from '../repositories/productRepository';
-import { getReservedQuantitiesByWarehouse, ReservationsByWarehouse } from '../repositories/reservationRepository';
+import { getReservedInventoryByWarehouseForProducts, ReservedInventoryByWarehouse } from '../repositories/reservationRepository';
 import { getWarehousesSortedByShippingCost, WarehouseShippingInfo } from '../repositories/warehouseRepository';
 import { eq, and } from 'drizzle-orm';
 
@@ -75,7 +75,7 @@ export async function createOrder(orderRequest: OrderRequest): Promise<OrderCrea
     const warehouseInventory = await getInventoryForProducts(productIds);
 
     // Step 4: Get reserved quantities for these products
-    const reservedQuantities = await getReservedQuantitiesByWarehouse(productIds);
+    const reservedQuantities = await getReservedInventoryByWarehouseForProducts(productIds);
 
     // Step 5: Allocate inventory and calculate shipping costs
     const { allocations, totalShippingCostCents } = allocateInventory(
@@ -200,7 +200,7 @@ function allocateInventory(
     productPricing: ProductCostDetails[],
     warehouseShippingCosts: WarehouseShippingInfo[],
     warehouseInventory: ProductInventoryByWarehouse,
-    reservedQuantities: ReservationsByWarehouse
+    reservedQuantities: ReservedInventoryByWarehouse
 ): { allocations: Allocation[], totalShippingCostCents: number } {
     const allocations: Allocation[] = [];
     let totalShippingCostCents = 0;

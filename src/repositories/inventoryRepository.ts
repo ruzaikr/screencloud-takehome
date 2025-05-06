@@ -32,7 +32,7 @@ export interface ProductInventoryByWarehouse {
  * quantities in that warehouse.
  *
  * @param productIds - An array of product ID strings (UUIDs).
- * @param transactionExecutor - A Drizzle transaction object. This object must have been
+ * @param tx - A Drizzle transaction object. This object must have been
  *                            obtained from a Drizzle instance initialized with the schema
  *                            (e.g., `db = drizzle(pool, { schema })`).
  * @returns A promise that resolves to a `ProductInventoryByWarehouse` object.
@@ -44,13 +44,13 @@ export interface ProductInventoryByWarehouse {
  */
 export async function getInventoryForProducts(
     productIds: string[],
-    transactionExecutor: AppTransactionExecutor
+    tx: AppTransactionExecutor
 ): Promise<ProductInventoryByWarehouse> {
     if (!productIds || productIds.length === 0) {
         return {};
     }
 
-    const inventoryRows = await transactionExecutor
+    const inventoryRows = await tx
         .select({
             productId: inventory.productId,
             warehouseId: inventory.warehouseId,

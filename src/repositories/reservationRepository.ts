@@ -1,91 +1,82 @@
-import { db } from '../db/client';
+import type { AppTransactionExecutor } from '../db/client';
 import { reservations, reservationLines } from '../db/schema';
-import { and, eq, gt, inArray } from 'drizzle-orm';
+import { and, eq, gt, inArray, sum, sql } from 'drizzle-orm';
 
 /**
- * Result type for product reservation quantities by warehouse
- * The outer key is the warehouseId
- * The inner key is the productId
- * The value is the total reserved quantity
+ * Defines the structure for reserved inventory information, mapping warehouse IDs
+ * to an object that maps product IDs to their total reserved quantity.
+ * The `warehouseId` and `productId` in the index signatures are illustrative names
+ * for the keys.
+ *
+ * @example
+ * {
+ *   "a3fb5cea-7c49-4b9c-a061-cb4f66693671": { // warehouseId (string)
+ *     "721c711e-94a0-456b-bb53-bdf96b3c062e": 450, // productId (string): totalReservedQuantity (number)
+ *     "dad59363-885c-4505-9ac5-f6923f4993e2": 100
+ *   },
+ *   "fe3bb7a6-68c8-430d-8bcb-e4bbef8af595": {
+ *     "721c711e-94a0-456b-bb53-bdf96b3c062e": 90,
+ *     "dad59363-885c-4505-9ac5-f6923f4993e2": 400
+ *   }
+ * }
  */
-export interface ReservationsByWarehouse {
+export interface ReservedInventoryByWarehouse {
     [warehouseId: string]: {
         [productId: string]: number;
     };
 }
 
 /**
- * Gets the total reserved quantities for specified products by warehouse
- * Only considers active reservations that haven't expired
+ * Retrieves the total reserved quantities for a given set of product IDs,
+ * grouped by warehouse.
  *
- * @param productIds Array of product IDs to get reservation quantities for
- * @returns Object mapping warehouseIds to productIds to reserved quantities
+ * This function considers only reservations that are currently 'ACTIVE'
+ * and have an 'expiresAt' timestamp in the future. It operates within
+ * the provided database transaction.
+ *
+ * @param tx The Drizzle transaction executor.
+ * @param productIds An array of product IDs for which to fetch reserved inventory.
+ *                   If empty, an empty object will be returned.
+ * @returns A promise that resolves to an object structured as `ReservedInventoryByWarehouse`.
+ *          If no reservations are found for the given products, or if the
+ *          `productIds` array is empty, an empty object is returned.
  */
-export async function getReservedQuantitiesByWarehouse(
+export async function getReservedInventoryByWarehouseForProducts(
+    tx: AppTransactionExecutor,
     productIds: string[]
-): Promise<ReservationsByWarehouse> {
-    // Return empty result if no product IDs provided
-    if (!productIds.length) {
+): Promise<ReservedInventoryByWarehouse> {
+    if (productIds.length === 0) {
         return {};
     }
 
-    const currentTime = new Date();
-
-    // Get all active reservation lines for the specified products
-    const activeReservationLines = await db
+    const activeReservationsData = await tx
         .select({
             warehouseId: reservationLines.warehouseId,
             productId: reservationLines.productId,
-            quantity: reservationLines.quantity,
-            reservationId: reservationLines.reservationId,
+            totalReservedQuantity: sum(reservationLines.quantity).mapWith(Number),
         })
         .from(reservationLines)
-        .innerJoin(
-            reservations,
+        .innerJoin(reservations, eq(reservationLines.reservationId, reservations.id))
+        .where(
             and(
-                eq(reservationLines.reservationId, reservations.id),
                 eq(reservations.status, 'ACTIVE'),
-                gt(reservations.expiresAt, currentTime)
+                gt(reservations.expiresAt, sql`CURRENT_TIMESTAMP`),
+                inArray(reservationLines.productId, productIds)
             )
         )
-        .where(inArray(reservationLines.productId, productIds));
+        .groupBy(
+            reservationLines.warehouseId,
+            reservationLines.productId
+        );
 
-    // Construct the result object
-    const result: ReservationsByWarehouse = {};
+    const result: ReservedInventoryByWarehouse = {};
 
-    // Group the reservation quantities by warehouse and product
-    for (const line of activeReservationLines) {
-        const warehouseId = line.warehouseId;
-        const productId = line.productId;
-        const quantity = line.quantity;
-
-        // Initialize the warehouse entry if it doesn't exist
-        if (!result[warehouseId]) {
-            result[warehouseId] = {};
+    for (const item of activeReservationsData) {
+        if (!result[item.warehouseId]) {
+            result[item.warehouseId] = {};
         }
-
-        // Initialize or add to the product quantity
-        if (!result[warehouseId][productId]) {
-            result[warehouseId][productId] = quantity;
-        } else {
-            result[warehouseId][productId] += quantity;
-        }
+        result[item.warehouseId][item.productId] = item.totalReservedQuantity;
     }
 
     return result;
 }
-
-/**
- * Example usage:
- *
- * import { getReservedQuantitiesByWarehouse } from './reservationRepository';
- *
- * // Get reserved quantities for these products across all warehouses
- * const productIds = ['product-id-1', 'product-id-2'];
- * const reservedQuantities = await getReservedQuantitiesByWarehouse(productIds);
- *
- * // Check a specific product's reserved quantity in a warehouse
- * const specificWarehouseId = 'warehouse-id-1';
- * const specificProductId = 'product-id-1';
- * const reservedQuantity = reservedQuantities[specificWarehouseId]?.[specificProductId] || 0;
- */
