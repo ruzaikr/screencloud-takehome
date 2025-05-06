@@ -1,119 +1,158 @@
-import { db } from '../db/client';
+import type { AppTransactionExecutor } from '../db/client';
 import { products, volumeDiscounts } from '../db/schema';
-import {inArray} from "drizzle-orm";
+import { inArray, desc } from 'drizzle-orm';
 
-export interface ProductQuantityRequest {
-    productId: string; // UUID in the schema
+/**
+ * Represents an item in the input, specifying a product and its quantity.
+ */
+export interface ProductQuantityInput {
+    productId: string;
     quantity: number;
 }
 
-export interface ProductPricingResult extends ProductQuantityRequest {
+/**
+ * Represents the calculated cost details for a product, including discounts.
+ */
+export interface ProductCostDetails {
+    /** The base price per unit for the product, in cents. */
     unitPriceCents: number;
+    /** The weight of a single unit of the product, in grams. */
     weightGrams: number;
+    /**
+     * The percentage discount applied based on the quantity.
+     * E.g., 15.00 for a 15% discount. This is a numeric value.
+     */
     discountPercentage: number;
-    totalPriceCents: number;
+    /** The total cost for the given quantity of the product, before any discounts, in cents. */
+    totalProductCostCents: number;
+    /** The total amount of discount applied for the given quantity, in cents. */
     totalDiscountCents: number;
-    totalDiscountedPriceCents: number;
+    /** The final cost for the given quantity of the product after discount, in cents. */
+    totalDiscountedProductCostCents: number;
 }
 
 /**
- * Calculate the applicable discount percentage for a product based on quantity
- * @param quantity The requested quantity
- * @param productDiscounts Array of volume discounts for the product
- * @returns The applicable discount percentage
+ * Calculates the cost details for a list of products and their quantities,
+ * applying the best available volume discount for each product.
+ * This function operates within a database transaction.
+ *
+ * @param tx The Drizzle transaction executor.
+ * @param items An array of ProductQuantityInput objects, each specifying a productId and quantity.
+ * @returns A Promise resolving to an array of ProductCostDetails objects,
+ *          corresponding to each input item.
+ * @throws Error if any productId in the input items does not correspond to an existing product.
  */
-function calculateDiscountPercentage(
-    quantity: number,
-    productDiscounts: typeof volumeDiscounts.$inferSelect[]
-): number {
-    if (!productDiscounts.length) {
-        return 0;
-    }
-
-    // Sort discounts by threshold in descending order
-    const sortedDiscounts = [...productDiscounts].sort(
-        (a, b) => b.threshold - a.threshold
-    );
-
-    // Find the first discount where quantity meets or exceeds the threshold
-    const applicableDiscount = sortedDiscounts.find(
-        discount => quantity >= discount.threshold
-    );
-
-    return applicableDiscount ? Number(applicableDiscount.discountPercentage) : 0;
-}
-
-/**
- * Calculate product pricing with appropriate volume discounts
- * @param productRequests Array of product IDs and quantities
- * @returns Array of products with pricing information
- */
-export async function calculateProductPricing(
-    productRequests: ProductQuantityRequest[]
-): Promise<ProductPricingResult[]> {
-    if (!productRequests.length) {
+export async function calculateProductCostsWithDiscounts(
+    tx: AppTransactionExecutor,
+    items: ProductQuantityInput[]
+): Promise<ProductCostDetails[]> {
+    if (!items || items.length === 0) {
         return [];
     }
 
-    // Get unique product IDs to query
-    const productIds = [...new Set(productRequests.map(req => req.productId))];
+    const productIds = items.map(item => item.productId);
+    // Use a Set to get unique product IDs for efficient fetching
+    const uniqueProductIds = [...new Set(productIds)];
 
-    // Fetch product details
-    const productDetails = await db
+    // Defensive check, though covered by the first items.length check if productIds must be non-empty
+    if (uniqueProductIds.length === 0) {
+        return [];
+    }
+
+    // 1. Fetch product base details (price, weight)
+    const fetchedProducts = await tx
         .select({
             id: products.id,
             unitPriceCents: products.unitPriceCents,
             weightGrams: products.weightGrams,
         })
         .from(products)
-        .where(inArray(products.id, productIds));
+        .where(inArray(products.id, uniqueProductIds));
 
-    // Create a lookup map for quick access
-    const productDetailsMap = new Map(
-        productDetails.map(p => [p.id, p])
+    // Store product data in a Map for quick lookup: Map<productId, {unitPriceCents, weightGrams}>
+    const productDataMap = new Map(
+        fetchedProducts.map(p => [
+            p.id,
+            { unitPriceCents: p.unitPriceCents, weightGrams: p.weightGrams },
+        ])
     );
 
-    // Fetch all volume discounts for these products
-    const allDiscounts = await db
-        .select()
+    // 2. Fetch all relevant volume discounts for these products
+    // Order by threshold descending to easily find the best applicable discount later
+    const fetchedDiscounts = await tx
+        .select({
+            productId: volumeDiscounts.productId,
+            threshold: volumeDiscounts.threshold,
+            discountPercentage: volumeDiscounts.discountPercentage, // This is a string from DB, e.g., "15.00"
+        })
         .from(volumeDiscounts)
-        .where(inArray(volumeDiscounts.productId, productIds))
+        .where(inArray(volumeDiscounts.productId, uniqueProductIds))
+        .orderBy(desc(volumeDiscounts.threshold)); // Crucial: highest thresholds first globally
 
-    // Group discounts by product ID
-    const discountsByProduct = allDiscounts.reduce((acc, discount) => {
-        if (!acc[discount.productId]) {
-            acc[discount.productId] = [];
+    // Group discounts by productId. The discounts for each product will be sorted by threshold descending.
+    // Map<productId, Array<{threshold, discountPercentage}>>
+    const productDiscountsMap = new Map<string, Array<{ threshold: number; discountPercentage: string }>>();
+    for (const discount of fetchedDiscounts) {
+        if (!productDiscountsMap.has(discount.productId)) {
+            productDiscountsMap.set(discount.productId, []);
         }
-        acc[discount.productId].push(discount);
-        return acc;
-    }, {} as Record<string, typeof allDiscounts>);
+        // Since fetchedDiscounts is sorted by threshold DESC globally,
+        // pushing them into product-specific arrays preserves this order for each product's list of discounts.
+        productDiscountsMap.get(discount.productId)!.push({
+            threshold: discount.threshold,
+            discountPercentage: discount.discountPercentage // Keep as string initially
+        });
+    }
 
-    // Calculate final pricing for each requested product+quantity
-    return productRequests.map(req => {
-        const productDetail = productDetailsMap.get(req.productId);
+    // 3. Process each input item to calculate costs and apply discounts
+    const results: ProductCostDetails[] = [];
+    for (const item of items) {
+        const productInfo = productDataMap.get(item.productId);
 
-        if (!productDetail) {
-            throw new Error(`Product not found: ${req.productId}`);
+        if (!productInfo) {
+            // If a product ID from input is not found, it's an error condition.
+            // This indicates invalid input or a data integrity issue.
+            throw new Error(`Product details not found for productId: ${item.productId}. Ensure all product IDs are valid.`);
         }
 
-        // Find the applicable discount
-        const discounts = discountsByProduct[req.productId] || [];
-        const discountPercentage = calculateDiscountPercentage(req.quantity, discounts);
+        const { unitPriceCents, weightGrams } = productInfo;
+        const quantity = item.quantity;
 
-        // Calculate all price components
-        const totalPriceCents = productDetail.unitPriceCents * req.quantity;
-        const totalDiscountCents = Math.round(totalPriceCents * (discountPercentage / 100));
-        const totalDiscountedPriceCents = totalPriceCents - totalDiscountCents;
+        let appliedDiscountPercentageValue = 0.0; // Default to 0% discount
 
-        return {
-            productId: req.productId,
-            quantity: req.quantity,
-            unitPriceCents: productDetail.unitPriceCents,
-            weightGrams: productDetail.weightGrams,
-            discountPercentage,
-            totalPriceCents,
+        const discountsForProduct = productDiscountsMap.get(item.productId) || [];
+
+        // Find the best applicable discount for the current product and quantity.
+        // Discounts for this product are already sorted by threshold in descending order.
+        for (const vd of discountsForProduct) {
+            if (quantity >= vd.threshold) {
+                // vd.discountPercentage is a string like "15.00", parse it to a number for calculation.
+                appliedDiscountPercentageValue = parseFloat(vd.discountPercentage);
+                break; // Found the highest threshold discount that applies, so stop.
+            }
+        }
+
+        // Calculate costs
+        const totalProductCostCents = unitPriceCents * quantity;
+
+        // Apply discount. Ensure discount calculation is done carefully.
+        // The discount percentage is used as a float (e.g., 15.0 for 15%).
+        // Result is rounded to the nearest cent.
+        const totalDiscountCents = Math.round(
+            totalProductCostCents * (appliedDiscountPercentageValue / 100)
+        );
+
+        const totalDiscountedProductCostCents = totalProductCostCents - totalDiscountCents;
+
+        results.push({
+            unitPriceCents,
+            weightGrams,
+            discountPercentage: appliedDiscountPercentageValue, // Store as a number (e.g., 15.0 or 15.25)
+            totalProductCostCents,
             totalDiscountCents,
-            totalDiscountedPriceCents,
-        };
-    });
+            totalDiscountedProductCostCents,
+        });
+    }
+
+    return results;
 }

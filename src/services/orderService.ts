@@ -6,7 +6,7 @@ import {
     inventoryLog
 } from '../db/schema';
 import { getInventoryForProducts, ProductInventoryByWarehouse } from '../repositories/inventoryRepository';
-import { calculateProductPricing, ProductPricingResult, ProductQuantityRequest } from '../repositories/productRepository';
+import { calculateProductCostsWithDiscounts, ProductCostDetails, ProductQuantityInput } from '../repositories/productRepository';
 import { getReservedQuantitiesByWarehouse, ReservationsByWarehouse } from '../repositories/reservationRepository';
 import { getWarehousesSortedByShippingCost, WarehouseShippingInfo } from '../repositories/warehouseRepository';
 import { eq, and } from 'drizzle-orm';
@@ -28,7 +28,7 @@ export interface Allocation {
 
 // Define the order request interface
 export interface OrderRequest {
-    productRequests: ProductQuantityRequest[];
+    productRequests: ProductQuantityInput[];
     shippingAddrLatitude: number;
     shippingAddrLongitude: number;
     salesRepReference?: string;
@@ -63,7 +63,7 @@ export async function createOrder(orderRequest: OrderRequest): Promise<OrderCrea
 
     // Step 1: Get product pricing information
     const productIds = productRequests.map(req => req.productId);
-    const productPricing = await calculateProductPricing(productRequests);
+    const productPricing = await calculateProductCostsWithDiscounts(productRequests);
 
     // Step 2: Get warehouse shipping costs sorted by cost
     const warehouseShippingCosts = await getWarehousesSortedByShippingCost(
@@ -197,7 +197,7 @@ export async function createOrder(orderRequest: OrderRequest): Promise<OrderCrea
  * @returns Allocations and total shipping cost
  */
 function allocateInventory(
-    productPricing: ProductPricingResult[],
+    productPricing: ProductCostDetails[],
     warehouseShippingCosts: WarehouseShippingInfo[],
     warehouseInventory: ProductInventoryByWarehouse,
     reservedQuantities: ReservationsByWarehouse
@@ -259,7 +259,7 @@ function allocateInventory(
  * @param allocations Array of inventory allocations
  */
 function validateAllocations(
-    productPricing: ProductPricingResult[],
+    productPricing: ProductCostDetails[],
     allocations: Allocation[]
 ): void {
     // Aggregate allocations by product
@@ -292,7 +292,7 @@ function validateAllocations(
  * @returns The final quote
  */
 function calculateQuote(
-    productPricing: ProductPricingResult[],
+    productPricing: ProductCostDetails[],
     totalShippingCostCents: number
 ): Quote {
     // Sum up the pricing components
