@@ -1,6 +1,6 @@
 import type { AppTransactionExecutor } from '../db/client';
-import { inventory } from '../db/schema';
-import { inArray } from 'drizzle-orm';
+import { inventory as inventoryTable, inventoryLog as inventoryLogTable, inventoryLogChangeTypeEnum } from '../db/schema';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
 /**
  * Describes the structure for reporting inventory, organized by warehouse and then by product.
@@ -52,12 +52,12 @@ export async function getInventoryForProducts(
 
     const inventoryRows = await tx
         .select({
-            productId: inventory.productId,
-            warehouseId: inventory.warehouseId,
-            quantity: inventory.quantity,
+            productId: inventoryTable.productId,
+            warehouseId: inventoryTable.warehouseId,
+            quantity: inventoryTable.quantity,
         })
-        .from(inventory)
-        .where(inArray(inventory.productId, productIds));
+        .from(inventoryTable)
+        .where(inArray(inventoryTable.productId, productIds));
 
     const result: ProductInventoryByWarehouse = {};
 
@@ -69,4 +69,86 @@ export async function getInventoryForProducts(
     }
 
     return result;
+}
+
+/**
+ * Represents an item for inventory update.
+ */
+export interface InventoryUpdateItem {
+    productId: string;
+    warehouseId: string;
+    /** The amount to decrement the quantity by (should be positive). */
+    quantityToDecrement: number;
+}
+
+/**
+ * Updates inventory quantities for a list of items and logs the changes.
+ * This function is designed to be used for order fulfillment, decrementing stock.
+ * It ensures that stock does not go below zero through a WHERE clause condition.
+ *
+ * @param tx The Drizzle transaction executor.
+ * @param updates An array of `InventoryUpdateItem` objects.
+ * @param orderId The ID of the order for which inventory is being updated, used as reference in logs.
+ * @throws Error if an update fails (e.g., insufficient stock for an item, or item not found).
+ */
+export async function updateInventoryAndLogChanges(
+    tx: AppTransactionExecutor,
+    updates: InventoryUpdateItem[],
+    orderId: string
+): Promise<void> {
+    if (updates.length === 0) {
+        return;
+    }
+
+    for (const update of updates) {
+        if (update.quantityToDecrement <= 0) {
+            // Skip if quantity to decrement is not positive, though logic should ensure this.
+            console.warn(`Skipping inventory update for product ${update.productId} in warehouse ${update.warehouseId} due to non-positive quantityToDecrement: ${update.quantityToDecrement}`);
+            continue;
+        }
+
+        const updatedRows = await tx
+            .update(inventoryTable)
+            .set({
+                quantity: sql`${inventoryTable.quantity} - ${update.quantityToDecrement}`,
+                updatedAt: new Date(),
+            })
+            .where(
+                and(
+                    eq(inventoryTable.productId, update.productId),
+                    eq(inventoryTable.warehouseId, update.warehouseId),
+                    sql`${inventoryTable.quantity} >= ${update.quantityToDecrement}` // Ensure stock doesn't go negative
+                )
+            )
+            .returning({
+                newQuantity: inventoryTable.quantity,
+                productId: inventoryTable.productId, // For verification if needed
+                warehouseId: inventoryTable.warehouseId, // For verification if needed
+            });
+
+        if (updatedRows.length === 0) {
+            // This means either the product-warehouse combination was not found,
+            // or the quantity condition (>= quantityToDecrement) failed.
+            // The allocation logic in the service should prevent attempting to decrement
+            // more than available stock. If this error occurs, it might indicate a race condition
+            // or a flaw in the pre-check logic.
+            throw new Error(
+                `Failed to update inventory for product ${update.productId} in warehouse ${update.warehouseId}. ` +
+                `This could be due to insufficient stock or the item not being found. ` +
+                `Attempted to decrement by ${update.quantityToDecrement}.`
+            );
+        }
+
+        const { newQuantity } = updatedRows[0];
+
+        await tx.insert(inventoryLogTable).values({
+            productId: update.productId,
+            warehouseId: update.warehouseId,
+            quantityChange: -update.quantityToDecrement, // Logged as negative for decrement
+            newQuantity: newQuantity,
+            changeType: inventoryLogChangeTypeEnum.enumValues[0], // 'ORDER_FULFILLMENT'
+            referenceId: orderId,
+            createdAt: new Date(), // Drizzle sets defaultNow, but explicit for clarity
+        });
+    }
 }

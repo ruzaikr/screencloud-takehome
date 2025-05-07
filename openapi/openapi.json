@@ -1,295 +1,188 @@
 {
-  "openapi": "3.0.3",
-  "info": {
-    "title": "Orders API",
-    "version": "1.0.0"
-  },
-  "servers": [
-    {
-      "url": "http://localhost:3002"
-    }
-  ],
-  "paths": {
-    "/health": {
-      "get": {
-        "summary": "Health check",
-        "responses": {
-          "200": {
-            "description": "Service is up",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HealthResponse"
-                },
-                "example": {
-                  "status": "ok",
-                  "timestamp": 1617181723000
-                }
-              }
-            }
-          }
-        }
-      }
+    "openapi": "3.0.3",
+    "info": {
+        "title": "E-commerce API",
+        "version": "1.0.0",
+        "description": "API for managing products, inventory, warehouses, orders, and reservations."
     },
-    "/orders": {
-      "post": {
-        "summary": "Create a new order",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/OrderRequest"
-              },
-              "example": {
-                "productRequests": [
-                  {
-                    "productId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-                    "quantity": 10
-                  }
+    "paths": {
+        "/orders": {
+            "post": {
+                "summary": "Place a new order",
+                "description": "Creates a new order for specified products. For 'walk-in' orders, inventory is allocated from available stock (inventory - reservations).",
+                "operationId": "createOrder",
+                "tags": [
+                    "Orders"
                 ],
-                "shippingAddrLatitude": 34.0522,
-                "shippingAddrLongitude": -118.2437,
-                "salesRepReference": "rep-123",
-                "customerReference": "cust-456"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Order created successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OrderCreationResult"
-                },
-                "example": {
-                  "orderId": "d290f1ee-6c54-4b01-90e6-d701748f0851",
-                  "quote": {
-                    "totalPriceCents": 10000,
-                    "totalDiscountCents": 2000,
-                    "totalShippingCostCents": 500,
-                    "totalOrderCostCents": 8500
-                  },
-                  "allocations": [
-                    {
-                      "productId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-                      "warehouseId": "8a6f9c4e-2d4b-4f14-9f63-4d6f1a1e2c3d",
-                      "quantity": 10
+                "requestBody": {
+                    "description": "Order creation payload",
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateOrderRequest"
+                            }
+                        }
                     }
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request data",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvalidRequestError"
                 },
-                "example": {
-                  "error": "Invalid request data",
-                  "details": {
-                    "productRequests": {
-                      "_errors": ["Order must contain at least one product"]
+                "responses": {
+                    "201": {
+                        "description": "Order successfully created",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CreateOrderResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request - Invalid input, insufficient stock, or shipping cost too high.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
                     }
-                  }
                 }
-              }
             }
-          },
-          "409": {
-            "description": "Inventory conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InventoryConflictError"
+        }
+    },
+    "components": {
+        "schemas": {
+            "OrderShippingAddress": {
+                "type": "object",
+                "properties": {
+                    "latitude": {
+                        "type": "string",
+                        "description": "Latitude of the shipping address.",
+                        "example": "40.7128"
+                    },
+                    "longitude": {
+                        "type": "string",
+                        "description": "Longitude of the shipping address.",
+                        "example": "-74.0060"
+                    }
                 },
-                "example": {
-                  "error": "Inventory conflict",
-                  "message": "Insufficient inventory for product 3fa85f64-5717-4562-b3fc-2c963f66afa6"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GenericError"
-                },
-                "example": {
-                  "error": "Internal server error"
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  },
-  "components": {
-    "schemas": {
-      "HealthResponse": {
-        "type": "object",
-        "required": ["status", "timestamp"],
-        "properties": {
-          "status": {
-            "type": "string",
-            "example": "ok"
-          },
-          "timestamp": {
-            "type": "integer",
-            "format": "int64",
-            "example": 1617181723000
-          }
-        }
-      },
-      "ProductQuantityRequest": {
-        "type": "object",
-        "required": ["productId", "quantity"],
-        "properties": {
-          "productId": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUID of the product"
-          },
-          "quantity": {
-            "type": "integer",
-            "description": "Quantity to order",
-            "minimum": 1
-          }
-        }
-      },
-      "OrderRequest": {
-        "type": "object",
-        "required": ["productRequests", "shippingAddrLatitude", "shippingAddrLongitude"],
-        "properties": {
-          "productRequests": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ProductQuantityRequest"
+                "required": [
+                    "latitude",
+                    "longitude"
+                ]
             },
-            "description": "List of products and quantities"
-          },
-          "shippingAddrLatitude": {
-            "type": "number",
-            "minimum": -90,
-            "maximum": 90,
-            "description": "Latitude of the shipping address"
-          },
-          "shippingAddrLongitude": {
-            "type": "number",
-            "minimum": -180,
-            "maximum": 180,
-            "description": "Longitude of the shipping address"
-          },
-          "salesRepReference": {
-            "type": "string",
-            "nullable": true,
-            "description": "Optional reference for the sales rep"
-          },
-          "customerReference": {
-            "type": "string",
-            "nullable": true,
-            "description": "Optional reference for the customer"
-          }
-        }
-      },
-      "Quote": {
-        "type": "object",
-        "required": ["totalPriceCents", "totalDiscountCents", "totalShippingCostCents", "totalOrderCostCents"],
-        "properties": {
-          "totalPriceCents": {
-            "type": "integer"
-          },
-          "totalDiscountCents": {
-            "type": "integer"
-          },
-          "totalShippingCostCents": {
-            "type": "integer"
-          },
-          "totalOrderCostCents": {
-            "type": "integer"
-          }
-        }
-      },
-      "Allocation": {
-        "type": "object",
-        "required": ["productId", "warehouseId", "quantity"],
-        "properties": {
-          "productId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "warehouseId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "quantity": {
-            "type": "integer",
-            "minimum": 1
-          }
-        }
-      },
-      "OrderCreationResult": {
-        "type": "object",
-        "required": ["orderId", "quote", "allocations"],
-        "properties": {
-          "orderId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "quote": {
-            "$ref": "#/components/schemas/Quote"
-          },
-          "allocations": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Allocation"
+            "OrderRequestedProduct": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "UUID of the product.",
+                        "example": "721c711e-94a0-456b-bb53-bdf96b3c062e"
+                    },
+                    "quantity": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Quantity of the product requested.",
+                        "example": 10
+                    }
+                },
+                "required": [
+                    "id",
+                    "quantity"
+                ]
+            },
+            "CreateOrderRequest": {
+                "type": "object",
+                "properties": {
+                    "shippingAddress": {
+                        "$ref": "#/components/schemas/OrderShippingAddress"
+                    },
+                    "requestedProducts": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/OrderRequestedProduct"
+                        },
+                        "minItems": 1,
+                        "description": "List of products to order."
+                    }
+                },
+                "required": [
+                    "shippingAddress",
+                    "requestedProducts"
+                ]
+            },
+            "CreateOrderResponse": {
+                "type": "object",
+                "properties": {
+                    "orderId": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "UUID of the created order."
+                    },
+                    "totalPriceCents": {
+                        "type": "integer",
+                        "description": "Total price of products before discount, in cents."
+                    },
+                    "discountCents": {
+                        "type": "integer",
+                        "description": "Total discount applied to the products, in cents."
+                    },
+                    "shippingCostCents": {
+                        "type": "integer",
+                        "description": "Total shipping cost for the order, in cents."
+                    }
+                },
+                "required": [
+                    "orderId",
+                    "totalPriceCents",
+                    "discountCents",
+                    "shippingCostCents"
+                ]
+            },
+            "ErrorResponse": {
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "A human-readable error message."
+                    },
+                    "issues": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path": {
+                                    "type": "array",
+                                    "items": {
+                                        "oneOf": [
+                                            { "type": "string" },
+                                            { "type": "integer" }
+                                        ]
+                                    }
+                                },
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "Optional array of specific validation issues (e.g., from Zod)."
+                    }
+                },
+                "required": [
+                    "message"
+                ]
             }
-          }
         }
-      },
-      "InvalidRequestError": {
-        "type": "object",
-        "required": ["error", "details"],
-        "properties": {
-          "error": {
-            "type": "string"
-          },
-          "details": {
-            "type": "object",
-            "description": "Validation errors",
-            "additionalProperties": true
-          }
-        }
-      },
-      "InventoryConflictError": {
-        "type": "object",
-        "required": ["error", "message"],
-        "properties": {
-          "error": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          }
-        }
-      },
-      "GenericError": {
-        "type": "object",
-        "required": ["error"],
-        "properties": {
-          "error": {
-            "type": "string"
-          }
-        }
-      }
     }
-  }
 }
