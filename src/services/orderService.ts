@@ -37,49 +37,62 @@ export async function createWalkInOrder(
 ): Promise<CreateOrderResponse> {
     const orderId = uuidv4(); // Generate Order ID upfront
 
+    // 1. Parse shipping address coordinates (outside transaction)
+    const shippingLat = parseFloat(request.shippingAddress.latitude);
+    const shippingLng = parseFloat(request.shippingAddress.longitude);
+
+    // 2. Prepare inputs for repository calls (outside transaction)
+    const productQuantityInputs: productRepository.ProductQuantityInput[] = request.requestedProducts.map(p => ({
+        productId: p.id,
+        quantity: p.quantity,
+    }));
+    const productIds = request.requestedProducts.map(p => p.id);
+
+    // 3. Perform read-only operations in parallel (outside transaction, using main db client)
+    const [
+        productCostDetailsList,
+        sortedWarehouses,
+        reservedInventoryByWarehouse
+    ] = await Promise.all([
+        productRepository.calculateProductCostsWithDiscounts(db, productQuantityInputs),
+        warehouseRepository.getWarehousesSortedByShippingCost(db, shippingLat, shippingLng),
+        reservationRepository.getReservedInventoryByWarehouseForProducts(db, productIds)
+    ]);
+
+    // --- Process data fetched outside transaction ---
+
+    // Product details processing
+    const productDetailsMap = new Map<string, productRepository.ProductCostDetails>();
+    productCostDetailsList.forEach((details, index) => {
+        // calculateProductCostsWithDiscounts returns results in the order of input items
+        productDetailsMap.set(request.requestedProducts[index].id, details);
+    });
+
+    let overallTotalPriceCents = 0;
+    let overallTotalDiscountCents = 0;
+    for (const details of productCostDetailsList) {
+        overallTotalPriceCents += details.totalProductCostCents;
+        overallTotalDiscountCents += details.totalDiscountCents;
+    }
+
+    // Warehouse processing
+    if (sortedWarehouses.length === 0 && request.requestedProducts.length > 0) {
+        throw new Error("No warehouses available to fulfill the order.");
+    }
+    const warehouseShippingCostMap = new Map<string, number>(
+        sortedWarehouses.map(wh => [wh.warehouseId, wh.shippingCostCentsPerKg])
+    );
+
     return db.transaction(async (tx) => {
-        // 1. Parse shipping address coordinates
-        const shippingLat = parseFloat(request.shippingAddress.latitude);
-        const shippingLng = parseFloat(request.shippingAddress.longitude);
-
-        // 2. Fetch Product Details & Calculate initial costs
-        const productQuantityInputs: productRepository.ProductQuantityInput[] = request.requestedProducts.map(p => ({
-            productId: p.id,
-            quantity: p.quantity,
-        }));
-
-        const productCostDetailsList = await productRepository.calculateProductCostsWithDiscounts(tx, productQuantityInputs);
-
-        // Create a map for easy lookup
-        const productDetailsMap = new Map<string, productRepository.ProductCostDetails>();
-        productCostDetailsList.forEach((details, index) => {
-            productDetailsMap.set(request.requestedProducts[index].id, details);
-        });
-
-        // 3. Calculate Total Price and Discount for the order
-        let overallTotalPriceCents = 0;
-        let overallTotalDiscountCents = 0;
-        for (const details of productCostDetailsList) {
-            overallTotalPriceCents += details.totalProductCostCents;
-            overallTotalDiscountCents += details.totalDiscountCents;
-        }
-
-        // 4. Fetch Warehouses Sorted by Shipping Cost
-        const sortedWarehouses = await warehouseRepository.getWarehousesSortedByShippingCost(tx, shippingLat, shippingLng);
-        if (sortedWarehouses.length === 0 && request.requestedProducts.length > 0) {
-            throw new Error("No warehouses available to fulfill the order.");
-        }
-        const warehouseShippingCostMap = new Map<string, number>(
-            sortedWarehouses.map(wh => [wh.warehouseId, wh.shippingCostCentsPerKg])
-        );
-
-
-        // 5. Fetch Current Inventory & Reserved Inventory
-        const productIds = request.requestedProducts.map(p => p.id);
+        // 4. Fetch Current Inventory (WITHIN TRANSACTION, WITH LOCKING)
         const currentInventoryByWarehouse = await inventoryRepository.getInventoryForProducts(productIds, tx);
-        const reservedInventoryByWarehouse = await reservationRepository.getReservedInventoryByWarehouseForProducts(tx, productIds);
 
-        // 6. Allocate Products to Warehouses
+        // 5. Allocate Products to Warehouses
+        // Uses:
+        // - `productDetailsMap` (from outside tx product costs)
+        // - `sortedWarehouses` (from outside tx warehouse sort)
+        // - `currentInventoryByWarehouse` (from INSIDE tx, locked inventory)
+        // - `reservedInventoryByWarehouseData` (from OUTSIDE tx, snapshot of reservations)
         const allocatedOrderLines: AllocatedOrderLine[] = [];
         const inventoryUpdates: inventoryRepository.InventoryUpdateItem[] = [];
 
@@ -88,8 +101,9 @@ export async function createWalkInOrder(
             const productDetail = productDetailsMap.get(reqProduct.id);
 
             if (!productDetail) {
-                // Should not happen if calculateProductCostsWithDiscounts worked and threw error for non-existent product
-                throw new Error(`Details for product ID ${reqProduct.id} not found.`);
+                // This should ideally be caught by calculateProductCostsWithDiscounts if a product ID is invalid.
+                // This is an assertion for internal consistency.
+                throw new Error(`Internal Error: Details for product ID ${reqProduct.id} not found after initial fetch.`);
             }
 
             for (const warehouse of sortedWarehouses) {
@@ -122,25 +136,28 @@ export async function createWalkInOrder(
             }
 
             if (remainingQtyToAllocate > 0) {
-                throw new InsufficientStockError(`Insufficient stock for product ID ${reqProduct.id}. Required: ${reqProduct.quantity}, Available after reservations: ${reqProduct.quantity - remainingQtyToAllocate}`);
+                const allocatedForThisProduct = reqProduct.quantity - remainingQtyToAllocate;
+                throw new InsufficientStockError(`Insufficient stock for product ID ${reqProduct.id}. Requested: ${reqProduct.quantity}, Allocated from available stock: ${allocatedForThisProduct}.`);
             }
         }
 
-        // 7. Calculate Shipping Cost
+        // 6. Calculate Shipping Cost
+        // Uses `allocatedOrderLines` (derived from locked stock) and `warehouseShippingCostMap` (from outside tx)
         let totalShippingCostCents = 0;
         for (const line of allocatedOrderLines) {
             const totalWeightKgForLine = (line.allocatedQuantity * line.productWeightGrams) / 1000;
             const shippingCostPerKg = warehouseShippingCostMap.get(line.warehouseId);
             if (shippingCostPerKg === undefined) {
-                throw new Error(`Shipping cost per kg not found for warehouse ${line.warehouseId}. This should not happen.`);
+                // This would indicate an internal logic error.
+                throw new Error(`Internal Error: Shipping cost per kg not found for warehouse ${line.warehouseId}.`);
             }
             const legShippingCost = Math.ceil(totalWeightKgForLine * shippingCostPerKg);
             totalShippingCostCents += legShippingCost;
         }
 
-        // 8. Validate Shipping Cost (max 15% of discounted product total)
+        // 7. Validate Shipping Cost
         const discountedProductTotal = overallTotalPriceCents - overallTotalDiscountCents;
-        const maxAllowedShippingCost = Math.floor(0.15 * discountedProductTotal); // Use Math.floor or ensure comparison handles floats correctly
+        const maxAllowedShippingCost = Math.floor(0.15 * discountedProductTotal);
 
         if (totalShippingCostCents > maxAllowedShippingCost) {
             throw new ShippingCostExceededError(
@@ -148,17 +165,18 @@ export async function createWalkInOrder(
             );
         }
 
-        // 9. Update Inventory (pass generated orderId)
+        // 8. Update Inventory
+        // `inventoryUpdates` derived from locked stock, `orderId` generated upfront.
         await inventoryRepository.updateInventoryAndLogChanges(tx, inventoryUpdates, orderId);
 
-        // 10. Create Order and Order Lines (pass generated orderId)
+        // 9. Create Order and Order Lines
         const orderHeaderParams: orderRepository.CreateOrderParams = {
             orderId,
-            shippingAddrLatitude: shippingLat,
-            shippingAddrLongitude: shippingLng,
-            totalPriceCents: overallTotalPriceCents,
-            discountCents: overallTotalDiscountCents,
-            shippingCostCents: totalShippingCostCents,
+            shippingAddrLatitude: shippingLat,           // from outside tx
+            shippingAddrLongitude: shippingLng,          // from outside tx
+            totalPriceCents: overallTotalPriceCents,     // from outside tx
+            discountCents: overallTotalDiscountCents,    // from outside tx
+            shippingCostCents: totalShippingCostCents,   // calculated within tx scope, but based on outside data + allocation
         };
         const orderLineItemsData: orderRepository.OrderLineData[] = allocatedOrderLines.map(al => ({
             productId: al.productId,
@@ -170,7 +188,7 @@ export async function createWalkInOrder(
 
         await orderRepository.createOrderAndLines(tx, orderHeaderParams, orderLineItemsData);
 
-        // 11. Return Response
+        // 10. Return Response
         return {
             orderId: orderId,
             totalPriceCents: overallTotalPriceCents,

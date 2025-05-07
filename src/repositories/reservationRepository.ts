@@ -1,4 +1,4 @@
-import type { AppTransactionExecutor } from '../db/client';
+import type { DatabaseExecutor } from '../db/client';
 import { reservations, reservationLines } from '../db/schema';
 import { and, eq, gt, inArray, sum, sql } from 'drizzle-orm';
 
@@ -31,10 +31,10 @@ export interface ReservedInventoryByWarehouse {
  * grouped by warehouse.
  *
  * This function considers only reservations that are currently 'ACTIVE'
- * and have an 'expiresAt' timestamp in the future. It operates within
- * the provided database transaction.
+ * and have an 'expiresAt' timestamp in the future. It can operate with
+ * either a main DB connection or a transaction.
  *
- * @param tx The Drizzle transaction executor.
+ * @param dbx The Drizzle database executor (db or tx).
  * @param productIds An array of product IDs for which to fetch reserved inventory.
  *                   If empty, an empty object will be returned.
  * @returns A promise that resolves to an object structured as `ReservedInventoryByWarehouse`.
@@ -42,14 +42,14 @@ export interface ReservedInventoryByWarehouse {
  *          `productIds` array is empty, an empty object is returned.
  */
 export async function getReservedInventoryByWarehouseForProducts(
-    tx: AppTransactionExecutor,
+    dbx: DatabaseExecutor,
     productIds: string[]
 ): Promise<ReservedInventoryByWarehouse> {
     if (productIds.length === 0) {
         return {};
     }
 
-    const activeReservationsData = await tx
+    const activeReservationsData = await dbx
         .select({
             warehouseId: reservationLines.warehouseId,
             productId: reservationLines.productId,

@@ -1,7 +1,8 @@
 import { Pool } from "pg";
-import { drizzle, NodePgDatabase } from "drizzle-orm/node-postgres";
+import { drizzle, NodePgDatabase, NodePgQueryResultHKT } from "drizzle-orm/node-postgres";
 import type { NodePgTransaction } from 'drizzle-orm/node-postgres';
 import type { ExtractTablesWithRelations } from 'drizzle-orm/relations';
+import type { PgDatabase } from 'drizzle-orm/pg-core';
 import dotenv from "dotenv";
 import * as schema from "./schema";
 
@@ -22,3 +23,9 @@ export type AppTransactionExecutor = NodePgTransaction<
     typeof schema,
     ExtractTablesWithRelations<typeof schema>
 >;
+
+/**
+ * A Drizzle query executor type that can represent either the main db connection
+ * or a transaction, suitable for read operations.
+ */
+export type DatabaseExecutor = PgDatabase<NodePgQueryResultHKT, typeof schema>;

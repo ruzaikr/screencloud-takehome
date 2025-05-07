@@ -1,4 +1,4 @@
-import type { AppTransactionExecutor } from '../db/client';
+import type { DatabaseExecutor } from '../db/client';
 import { products, volumeDiscounts } from '../db/schema';
 import { inArray, desc } from 'drizzle-orm';
 
@@ -34,16 +34,16 @@ export interface ProductCostDetails {
 /**
  * Calculates the cost details for a list of products and their quantities,
  * applying the best available volume discount for each product.
- * This function operates within a database transaction.
+ * This function can operate with either a main DB connection or a transaction.
  *
- * @param tx The Drizzle transaction executor.
+ * @param dbx The Drizzle database executor (db or tx).
  * @param items An array of ProductQuantityInput objects, each specifying a productId and quantity.
  * @returns A Promise resolving to an array of ProductCostDetails objects,
  *          corresponding to each input item.
  * @throws Error if any productId in the input items does not correspond to an existing product.
  */
 export async function calculateProductCostsWithDiscounts(
-    tx: AppTransactionExecutor,
+    dbx: DatabaseExecutor,
     items: ProductQuantityInput[]
 ): Promise<ProductCostDetails[]> {
     if (!items || items.length === 0) {
@@ -60,7 +60,7 @@ export async function calculateProductCostsWithDiscounts(
     }
 
     // 1. Fetch product base details (price, weight)
-    const fetchedProducts = await tx
+    const fetchedProducts = await dbx
         .select({
             id: products.id,
             unitPriceCents: products.unitPriceCents,
@@ -79,7 +79,7 @@ export async function calculateProductCostsWithDiscounts(
 
     // 2. Fetch all relevant volume discounts for these products
     // Order by threshold descending to easily find the best applicable discount later
-    const fetchedDiscounts = await tx
+    const fetchedDiscounts = await dbx
         .select({
             productId: volumeDiscounts.productId,
             threshold: volumeDiscounts.threshold,

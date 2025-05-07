@@ -1,4 +1,4 @@
-import type { AppTransactionExecutor } from '../db/client';
+import type { DatabaseExecutor } from '../db/client';
 import { warehouses as warehousesTable } from '../db/schema';
 import dotenv from 'dotenv';
 
@@ -91,9 +91,9 @@ export interface WarehouseShippingInfo {
  * Retrieves all warehouses, calculates the shipping cost per kilogram to a given
  * shipping address for each warehouse, and returns them sorted by this cost in ascending order.
  *
- * This function operates within a database transaction.
+ * This function can operate with either a main DB connection or a transaction.
  *
- * @param tx The Drizzle transaction executor.
+ * @param dbx The Drizzle database executor (db or tx).
  * @param shippingAddrLatitude The latitude of the shipping address.
  * @param shippingAddrLongitude The longitude of the shipping address.
  * @returns A Promise resolving to an array of WarehouseShippingInfo objects,
@@ -102,13 +102,13 @@ export interface WarehouseShippingInfo {
  *         or if critical configuration is missing/invalid (checked at module load time).
  */
 export async function getWarehousesSortedByShippingCost(
-    tx: AppTransactionExecutor,
+    dbx: DatabaseExecutor,
     shippingAddrLatitude: number,
     shippingAddrLongitude: number
 ): Promise<WarehouseShippingInfo[]> {
     // 1. Fetch all warehouses from the database
     // Selecting 'name' as well for better error messages or debugging if needed.
-    const allWarehouses = await tx
+    const allWarehouses = await dbx
         .select({
             id: warehousesTable.id,
             name: warehousesTable.name,
