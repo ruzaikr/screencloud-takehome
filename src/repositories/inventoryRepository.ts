@@ -23,13 +23,14 @@ export interface ProductInventoryByWarehouse {
 
 /**
  * Retrieves the current inventory quantities for a given list of product IDs,
- * categorized by warehouse.
+ * categorized by warehouse, and locks the selected rows for update.
  *
  * It queries the `inventory` table using the provided transaction to find all
  * stock records for the specified product IDs. It then aggregates this data
  * into a nested object structure where the top-level keys are warehouse IDs,
  * and their values are objects mapping product IDs to their respective
- * quantities in that warehouse.
+ * quantities in that warehouse. The selected inventory rows are locked using
+ * `FOR UPDATE` to prevent concurrent modifications until the transaction completes.
  *
  * @param productIds - An array of product ID strings (UUIDs).
  * @param tx - A Drizzle transaction object. This object must have been
@@ -57,7 +58,8 @@ export async function getInventoryForProducts(
             quantity: inventoryTable.quantity,
         })
         .from(inventoryTable)
-        .where(inArray(inventoryTable.productId, productIds));
+        .where(inArray(inventoryTable.productId, productIds))
+        .for('update');
 
     const result: ProductInventoryByWarehouse = {};
 
@@ -131,10 +133,12 @@ export async function updateInventoryAndLogChanges(
             // or the quantity condition (>= quantityToDecrement) failed.
             // The allocation logic in the service should prevent attempting to decrement
             // more than available stock. If this error occurs, it might indicate a race condition
-            // or a flaw in the pre-check logic.
+            // not fully covered, a flaw in pre-check logic, or an attempt to update a non-existent record.
+            // With FOR UPDATE, insufficient stock at this stage (if pre-checks were correct based on locked reads)
+            // would be highly unlikely unless there's a logical flaw in how available stock was calculated.
             throw new Error(
                 `Failed to update inventory for product ${update.productId} in warehouse ${update.warehouseId}. ` +
-                `This could be due to insufficient stock or the item not being found. ` +
+                `This could be due to insufficient stock (meaning the pre-check based on locked read was somehow bypassed or incorrect) or the item not being found. ` +
                 `Attempted to decrement by ${update.quantityToDecrement}.`
             );
         }
