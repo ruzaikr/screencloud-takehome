@@ -27,8 +27,9 @@ interface AllocatedOrderLine {
     warehouseId: string;
     allocatedQuantity: number;
     unitPriceCents: number;
-    discountPercentage: number; // e.g. 15.0 for 15%
+    discountPercentage: number;
     productWeightGrams: number;
+    shippingCostCentsPerKg: number;
 }
 
 
@@ -76,13 +77,9 @@ export async function createWalkInOrder(
         // This mostly ensures warehouses exist if there are valid products to ship.
         throw new Error("No warehouses available to fulfill the order.");
     }
-    const warehouseShippingCostMap = new Map<string, number>(
-        sortedWarehouses.map(wh => [wh.warehouseId, wh.shippingCostCentsPerKg])
-    );
 
     return db.transaction(async (tx) => {
         // 4. Fetch Current Inventory (WITHIN TRANSACTION, WITH LOCKING)
-        // productIds could also be derived from productDetailsMap.keys() if preferred
         const currentInventoryByWarehouse = await inventoryRepository.getInventoryForProducts(productIds, tx);
 
         // 5. Allocate Products to Warehouses
@@ -110,6 +107,7 @@ export async function createWalkInOrder(
                         unitPriceCents: productDetail.unitPriceCents,
                         discountPercentage: productDetail.discountPercentage,
                         productWeightGrams: productDetail.weightGrams,
+                        shippingCostCentsPerKg: warehouse.shippingCostCentsPerKg,
                     });
 
                     inventoryUpdates.push({
@@ -131,11 +129,7 @@ export async function createWalkInOrder(
         let totalShippingCostCents = 0;
         for (const line of allocatedOrderLines) {
             const totalWeightKgForLine = (line.allocatedQuantity * line.productWeightGrams) / 1000;
-            const shippingCostPerKg = warehouseShippingCostMap.get(line.warehouseId);
-            if (shippingCostPerKg === undefined) {
-                throw new Error(`Internal Error: Shipping cost per kg not found for warehouse ${line.warehouseId}.`);
-            }
-            const legShippingCost = Math.ceil(totalWeightKgForLine * shippingCostPerKg);
+            const legShippingCost = Math.ceil(totalWeightKgForLine * line.shippingCostCentsPerKg);
             totalShippingCostCents += legShippingCost;
         }
 
