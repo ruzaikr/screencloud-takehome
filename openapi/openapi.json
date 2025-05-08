@@ -58,6 +58,81 @@
                     }
                 }
             }
+        },
+        "/reservations": {
+            "post": {
+                "summary": "Check reservation feasibility",
+                "description": "Checks if a reservation for specified products is feasible based on current inventory, existing reservations, and shipping cost limits. Does not create a reservation.",
+                "operationId": "checkReservationFeasibility",
+                "tags": [
+                    "Reservations"
+                ],
+                "parameters": [
+                    {
+                        "name": "reserve",
+                        "in": "query",
+                        "required": true,
+                        "description": "Must be 'false' to check feasibility without creating a reservation.",
+                        "schema": {
+                            "type": "string",
+                            "enum": ["false"]
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "description": "Reservation check payload (same as creating an order)",
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateOrderRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Reservation feasibility check successful. Inspect 'isValid' field in the response.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CheckReservationResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request - Invalid input, or reservation is not feasible (e.g. insufficient stock, shipping cost too high).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "501": {
+                        "description": "Not Implemented - If 'reserve' query param is not 'false'.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -145,6 +220,38 @@
                 },
                 "required": [
                     "orderId",
+                    "totalPriceCents",
+                    "discountCents",
+                    "shippingCostCents"
+                ]
+            },
+            "CheckReservationResponse": {
+                "type": "object",
+                "properties": {
+                    "isValid": {
+                        "type": "boolean",
+                        "description": "Indicates if the reservation is feasible based on stock and shipping cost limits."
+                    },
+                    "totalPriceCents": {
+                        "type": "integer",
+                        "description": "Total price of requested products before discount, in cents."
+                    },
+                    "discountCents": {
+                        "type": "integer",
+                        "description": "Total discount applicable to the requested products, in cents."
+                    },
+                    "shippingCostCents": {
+                        "type": "integer",
+                        "description": "Calculated total shipping cost for the requested products, in cents. This value is provided even if isValid is false due to stock issues, reflecting the cost if stock were available, or the cost that violated limits."
+                    },
+                    "message": {
+                        "type": "string",
+                        "description": "An optional message, typically present if 'isValid' is false, explaining the reason.",
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "isValid",
                     "totalPriceCents",
                     "discountCents",
                     "shippingCostCents"

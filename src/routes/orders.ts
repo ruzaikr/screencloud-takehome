@@ -1,15 +1,14 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import * as orderService from '../services/orderService';
+import { InsufficientStockError } from "../services/shared/helpers";
+
 import {
     CreateOrderRequestSchema,
-    CreateOrderRequest,      // Inferred type from CreateOrderRequestSchema
-    CreateOrderResponse,     // Inferred type from CreateOrderResponseSchema
-    ErrorResponseSchema      // Zod schema for error responses
+    CreateOrderRequest,
+    CreateOrderResponse,
+    ErrorResponse
 } from '../schemas/order';
-import { ZodError, z } from 'zod'; // z is needed for z.infer
-
-// Type for the error response body, inferred from the Zod schema
-type ErrorResponseBody = z.infer<typeof ErrorResponseSchema>;
+import { ZodError } from 'zod'; // z is needed for z.infer
 
 const router = Router();
 
@@ -51,8 +50,8 @@ const router = Router();
  */
 router.post('/', async (
     // Define types for Request: P (Params), ResBody, ReqBody, ReqQuery
-    req: Request<object, CreateOrderResponse | ErrorResponseBody, CreateOrderRequest>,
-    res: Response<CreateOrderResponse | ErrorResponseBody>,
+    req: Request<object, CreateOrderResponse | ErrorResponse, CreateOrderRequest>,
+    res: Response<CreateOrderResponse | ErrorResponse>,
     next: NextFunction // Add next to match RequestHandler signature
 ): Promise<void> => { // Explicitly set return type to Promise<void>
 
@@ -61,7 +60,7 @@ router.post('/', async (
     const parsedRequest = CreateOrderRequestSchema.safeParse(req.body);
 
     if (!parsedRequest.success) {
-        const errorPayload: ErrorResponseBody = {
+        const errorPayload: ErrorResponse = {
             message: "Invalid request payload. Please check the provided data.",
             // ZodError.issues is compatible with the ErrorResponseSchema's issues structure
             issues: parsedRequest.error.issues,
@@ -82,9 +81,9 @@ router.post('/', async (
         // Be mindful of logging sensitive data from req.body in production environments
         console.error(`Error processing POST /orders request. Body: ${JSON.stringify(req.body)}. Error:`, error);
 
-        let errorPayload: ErrorResponseBody;
+        let errorPayload: ErrorResponse;
 
-        if (error instanceof orderService.InsufficientStockError ||
+        if (error instanceof InsufficientStockError ||
             error instanceof orderService.ShippingCostExceededError) {
             errorPayload = { message: error.message };
             res.status(400).json(errorPayload);

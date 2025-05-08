@@ -38,3 +38,4 @@ export const ErrorResponseSchema = z.object({
     message: z.string(),
     issues: z.array(z.object({ path: z.array(z.string().or(z.number())), message: z.string() })).optional(),
 });
+export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
