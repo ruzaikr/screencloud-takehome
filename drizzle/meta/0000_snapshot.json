@@ -727,7 +727,7 @@
         "RESERVATION_CONSUMED",
         "RESERVATION_EXPIRED",
         "RESERVATION_RELEASED",
-        "STOCK_ADJUSTMENT"
+        "INVENTORY_ADJUSTMENT"
       ]
     },
     "public.reservation_status": {

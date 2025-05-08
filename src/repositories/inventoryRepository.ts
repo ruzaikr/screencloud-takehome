@@ -26,7 +26,7 @@ export interface ProductInventoryByWarehouse {
  * categorized by warehouse, and locks the selected rows for update.
  *
  * It queries the `inventory` table using the provided transaction to find all
- * stock records for the specified product IDs. It then aggregates this data
+ * inventory records for the specified product IDs. It then aggregates this data
  * into a nested object structure where the top-level keys are warehouse IDs,
  * and their values are objects mapping product IDs to their respective
  * quantities in that warehouse. The selected inventory rows are locked using
@@ -85,13 +85,13 @@ export interface InventoryUpdateItem {
 
 /**
  * Updates inventory quantities for a list of items and logs the changes.
- * This function is designed to be used for order fulfillment, decrementing stock.
- * It ensures that stock does not go below zero through a WHERE clause condition.
+ * This function is designed to be used for order fulfillment, decrementing inventory.
+ * It ensures that inventory does not go below zero through a WHERE clause condition.
  *
  * @param tx The Drizzle transaction executor.
  * @param updates An array of `InventoryUpdateItem` objects.
  * @param orderId The ID of the order for which inventory is being updated, used as reference in logs.
- * @throws Error if an update fails (e.g., insufficient stock for an item, or item not found).
+ * @throws Error if an update fails (e.g., insufficient inventory for an item, or item not found).
  */
 export async function updateInventoryAndLogChanges(
     tx: AppTransactionExecutor,
@@ -119,7 +119,7 @@ export async function updateInventoryAndLogChanges(
                 and(
                     eq(inventoryTable.productId, update.productId),
                     eq(inventoryTable.warehouseId, update.warehouseId),
-                    sql`${inventoryTable.quantity} >= ${update.quantityToDecrement}` // Ensure stock doesn't go negative
+                    sql`${inventoryTable.quantity} >= ${update.quantityToDecrement}` // Ensure inventory doesn't go negative
                 )
             )
             .returning({
@@ -132,13 +132,13 @@ export async function updateInventoryAndLogChanges(
             // This means either the product-warehouse combination was not found,
             // or the quantity condition (>= quantityToDecrement) failed.
             // The allocation logic in the service should prevent attempting to decrement
-            // more than available stock. If this error occurs, it might indicate a race condition
+            // more than available inventory. If this error occurs, it might indicate a race condition
             // not fully covered, a flaw in pre-check logic, or an attempt to update a non-existent record.
-            // With FOR UPDATE, insufficient stock at this stage (if pre-checks were correct based on locked reads)
-            // would be highly unlikely unless there's a logical flaw in how available stock was calculated.
+            // With FOR UPDATE, insufficient inventory at this stage (if pre-checks were correct based on locked reads)
+            // would be highly unlikely unless there's a logical flaw in how available inventory was calculated.
             throw new Error(
                 `Failed to update inventory for product ${update.productId} in warehouse ${update.warehouseId}. ` +
-                `This could be due to insufficient stock (meaning the pre-check based on locked read was somehow bypassed or incorrect) or the item not being found. ` +
+                `This could be due to insufficient inventory (meaning the pre-check based on locked read was somehow bypassed or incorrect) or the item not being found. ` +
                 `Attempted to decrement by ${update.quantityToDecrement}.`
             );
         }

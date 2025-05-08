@@ -39,7 +39,7 @@ const router = Router();
  *             schema:
  *               $ref: '#/components/schemas/CheckReservationResponse'
  *       '400':
- *         description: Bad Request - Invalid input, insufficient stock, or shipping cost too high.
+ *         description: Bad Request - Invalid input, insufficient inventory, or shipping cost too high.
  *         content:
  *           application/json:
  *             schema:
@@ -84,16 +84,16 @@ router.post('/', async (
     try {
         const feasibilityDetails = await reservationService.mainReservationServiceFunction(parsedRequest.data);
 
-        // If feasibilityDetails.isValid is false, it means a business rule failed (stock or shipping)
+        // If feasibilityDetails.isValid is false, it means a business rule failed (inventory or shipping)
         // The service.ts already populates the message field in feasibilityDetails for this.
         // The HTTP status code should still be 200 as the *operation* (feasibility check) was successful.
         // The client then inspects the `isValid` field.
-        // However, if the problem statement implies that "insufficient stock, or shipping cost too high" should be a 400,
+        // However, if the problem statement implies that "insufficient inventory, or shipping cost too high" should be a 400,
         // we can adjust. The OpenAPI spec for POST /orders uses 400 for these.
         // Let's align with that for consistency for user-correctable errors.
         if (!feasibilityDetails.isValid) {
             const errorPayload: ErrorResponse = {
-                message: feasibilityDetails.message || "Reservation is not feasible due to business constraints (e.g., stock or shipping costs)."
+                message: feasibilityDetails.message || "Reservation is not feasible due to business constraints (e.g., inventory or shipping costs)."
             };
             res.status(400).json(errorPayload);
             return;
@@ -108,7 +108,7 @@ router.post('/', async (
 
         // These specific errors are handled by the isValid: false path above now.
         // This catch block is for other errors, like unexpected ones or Zod errors from deeper layers.
-        // if (error instanceof InsufficientStockError || error instanceof ShippingCostExceededError) {
+        // if (error instanceof InsufficientInventoryError || error instanceof ShippingCostExceededError) {
         //     errorPayload = { message: error.message };
         //     res.status(400).json(errorPayload);
         //     return;

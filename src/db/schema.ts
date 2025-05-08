@@ -21,11 +21,11 @@ export const reservationStatusEnum = pgEnum('reservation_status', [
 
 export const inventoryLogChangeTypeEnum = pgEnum('inventory_log_change_type', [
     'ORDER_FULFILLMENT',
-    'RESERVATION_CREATED', // Note: Reservation creation doesn't change physical stock
+    'RESERVATION_CREATED', // Note: Reservation creation doesn't change physical inventory
     'RESERVATION_CONSUMED', // This happens implicitly with ORDER_FULFILLMENT from reservation
     'RESERVATION_EXPIRED',  // When expired reservation quantity is released
     'RESERVATION_RELEASED', // When manually released
-    'STOCK_ADJUSTMENT', // For manual stock changes
+    'INVENTORY_ADJUSTMENT', // For manual inventory changes
 ]);
 
 

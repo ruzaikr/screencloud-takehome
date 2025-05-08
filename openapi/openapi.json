@@ -9,7 +9,7 @@
         "/orders": {
             "post": {
                 "summary": "Place a new order",
-                "description": "Creates a new order for specified products. For 'walk-in' orders, inventory is allocated from available stock (inventory - reservations).",
+                "description": "Creates a new order for specified products. For 'walk-in' orders, inventory is allocated from available inventory (inventory - reservations).",
                 "operationId": "createOrder",
                 "tags": [
                     "Orders"
@@ -37,7 +37,7 @@
                         }
                     },
                     "400": {
-                        "description": "Bad Request - Invalid input, insufficient stock, or shipping cost too high.",
+                        "description": "Bad Request - Invalid input, insufficient inventory, or shipping cost too high.",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -102,7 +102,7 @@
                         }
                     },
                     "400": {
-                        "description": "Bad Request - Invalid input, or reservation is not feasible (e.g. insufficient stock, shipping cost too high).",
+                        "description": "Bad Request - Invalid input, or reservation is not feasible (e.g. insufficient inventory, shipping cost too high).",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -230,7 +230,7 @@
                 "properties": {
                     "isValid": {
                         "type": "boolean",
-                        "description": "Indicates if the reservation is feasible based on stock and shipping cost limits."
+                        "description": "Indicates if the reservation is feasible based on inventory and shipping cost limits."
                     },
                     "totalPriceCents": {
                         "type": "integer",
@@ -242,7 +242,7 @@
                     },
                     "shippingCostCents": {
                         "type": "integer",
-                        "description": "Calculated total shipping cost for the requested products, in cents. This value is provided even if isValid is false due to stock issues, reflecting the cost if stock were available, or the cost that violated limits."
+                        "description": "Calculated total shipping cost for the requested products, in cents. This value is provided even if isValid is false due to inventory issues, reflecting the cost if inventory were available, or the cost that violated limits."
                     },
                     "message": {
                         "type": "string",

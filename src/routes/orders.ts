@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import * as orderService from '../services/orderService';
-import { InsufficientStockError } from "../services/shared/helpers";
+import { InsufficientInventoryError } from "../services/shared/helpers";
 
 import {
     CreateOrderRequestSchema,
@@ -17,7 +17,7 @@ const router = Router();
  * /orders:
  *   post:
  *     summary: Place a new order
- *     description: Creates a new order for specified products. For 'walk-in' orders, inventory is allocated from available stock (inventory - reservations).
+ *     description: Creates a new order for specified products. For 'walk-in' orders, inventory is allocated from available inventory (inventory - reservations).
  *     operationId: createOrder
  *     tags:
  *       - Orders
@@ -36,7 +36,7 @@ const router = Router();
  *             schema:
  *               $ref: '#/components/schemas/CreateOrderResponse'
  *       '400':
- *         description: Bad Request - Invalid input, insufficient stock, or shipping cost too high.
+ *         description: Bad Request - Invalid input, insufficient inventory, or shipping cost too high.
  *         content:
  *           application/json:
  *             schema:
@@ -83,7 +83,7 @@ router.post('/', async (
 
         let errorPayload: ErrorResponse;
 
-        if (error instanceof InsufficientStockError ||
+        if (error instanceof InsufficientInventoryError ||
             error instanceof orderService.ShippingCostExceededError) {
             errorPayload = { message: error.message };
             res.status(400).json(errorPayload);

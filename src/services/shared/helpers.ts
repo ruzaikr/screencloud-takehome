@@ -4,10 +4,10 @@ import * as inventoryRepository from '../../repositories/inventoryRepository';
 import * as reservationRepository from '../../repositories/reservationRepository';
 import * as orderRepository from "../../repositories/orderRepository";
 
-export class InsufficientStockError extends Error {
+export class InsufficientInventoryError extends Error {
     constructor(message: string) {
         super(message);
-        this.name = "InsufficientStockError";
+        this.name = "InsufficientInventoryError";
     }
 }
 
@@ -40,14 +40,14 @@ export function calculateOverallProductTotals(
 }
 
 /**
- * Allocates requested products to warehouses based on available stock and sorted warehouse preference.
+ * Allocates requested products to warehouses based on available inventory and sorted warehouse preference.
  *
  * @param productDetailsMap Map of product IDs to their cost and weight details.
  * @param sortedWarehouses Array of warehouses sorted by shipping preference.
  * @param currentInventoryByWarehouse Current inventory levels, locked for update.
  * @param reservedInventoryByWarehouse Current reserved inventory levels.
  * @returns An object containing allocated order lines and inventory update items.
- * @throws InsufficientStockError if any product cannot be fully allocated.
+ * @throws InsufficientInventoryError if any product cannot be fully allocated.
  */
 export function performInventoryAllocation(
     productDetailsMap: Map<string, productRepository.ProductCostDetails>,
@@ -65,9 +65,9 @@ export function performInventoryAllocation(
             if (remainingQtyToAllocate <= 0) break;
 
             const warehouseId = warehouse.warehouseId;
-            const stockInWarehouse = currentInventoryByWarehouse[warehouseId]?.[productId] ?? 0;
+            const inventoryInWarehouse = currentInventoryByWarehouse[warehouseId]?.[productId] ?? 0;
             const reservedInWarehouse = reservedInventoryByWarehouse[warehouseId]?.[productId] ?? 0;
-            const availableForWalkIn = Math.max(0, stockInWarehouse - reservedInWarehouse);
+            const availableForWalkIn = Math.max(0, inventoryInWarehouse - reservedInWarehouse);
 
             if (availableForWalkIn > 0) {
                 const qtyToAllocateFromWarehouse = Math.min(remainingQtyToAllocate, availableForWalkIn);
@@ -93,7 +93,7 @@ export function performInventoryAllocation(
 
         if (remainingQtyToAllocate > 0) {
             const allocatedForThisProduct = productDetail.requestedQuantity - remainingQtyToAllocate;
-            throw new InsufficientStockError(`Insufficient stock for product ID ${productId}. Requested: ${productDetail.requestedQuantity}, Allocated from available stock: ${allocatedForThisProduct}.`);
+            throw new InsufficientInventoryError(`Insufficient inventory for product ID ${productId}. Requested: ${productDetail.requestedQuantity}, Allocated from available inventory: ${allocatedForThisProduct}.`);
         }
     }
     return { allocatedOrderLines, inventoryUpdates };
