@@ -32,11 +32,167 @@ interface AllocatedOrderLine {
     shippingCostCentsPerKg: number;
 }
 
+// --- Helper Functions ---
+
+/**
+ * Calculates the overall total price and total discount from product details.
+ *
+ * @param productDetailsMap Map of product IDs to their cost and weight details.
+ * @returns An object containing the overall total price and discount in cents.
+ */
+function _calculateOverallProductTotals(
+    productDetailsMap: Map<string, productRepository.ProductCostDetails>
+): { overallTotalPriceCents: number, overallTotalDiscountCents: number } {
+    let overallTotalPriceCents = 0;
+    let overallTotalDiscountCents = 0;
+    for (const details of productDetailsMap.values()) {
+        overallTotalPriceCents += details.totalProductCostCents;
+        overallTotalDiscountCents += details.totalDiscountCents;
+    }
+    return { overallTotalPriceCents, overallTotalDiscountCents };
+}
+
+/**
+ * Allocates requested products to warehouses based on available stock and sorted warehouse preference.
+ *
+ * @param productDetailsMap Map of product IDs to their cost and weight details.
+ * @param sortedWarehouses Array of warehouses sorted by shipping preference.
+ * @param currentInventoryByWarehouse Current inventory levels, locked for update.
+ * @param reservedInventoryByWarehouse Current reserved inventory levels.
+ * @returns An object containing allocated order lines and inventory update items.
+ * @throws InsufficientStockError if any product cannot be fully allocated.
+ */
+function _performInventoryAllocation(
+    productDetailsMap: Map<string, productRepository.ProductCostDetails>,
+    sortedWarehouses: warehouseRepository.WarehouseShippingInfo[],
+    currentInventoryByWarehouse: inventoryRepository.ProductInventoryByWarehouse,
+    reservedInventoryByWarehouse: reservationRepository.ReservedInventoryByWarehouse
+): { allocatedOrderLines: AllocatedOrderLine[], inventoryUpdates: inventoryRepository.InventoryUpdateItem[] } {
+    const allocatedOrderLines: AllocatedOrderLine[] = [];
+    const inventoryUpdates: inventoryRepository.InventoryUpdateItem[] = [];
+
+    for (const [productId, productDetail] of productDetailsMap.entries()) {
+        let remainingQtyToAllocate = productDetail.requestedQuantity;
+
+        for (const warehouse of sortedWarehouses) {
+            if (remainingQtyToAllocate <= 0) break;
+
+            const warehouseId = warehouse.warehouseId;
+            const stockInWarehouse = currentInventoryByWarehouse[warehouseId]?.[productId] ?? 0;
+            const reservedInWarehouse = reservedInventoryByWarehouse[warehouseId]?.[productId] ?? 0;
+            const availableForWalkIn = Math.max(0, stockInWarehouse - reservedInWarehouse);
+
+            if (availableForWalkIn > 0) {
+                const qtyToAllocateFromWarehouse = Math.min(remainingQtyToAllocate, availableForWalkIn);
+
+                allocatedOrderLines.push({
+                    productId: productId,
+                    warehouseId: warehouseId,
+                    allocatedQuantity: qtyToAllocateFromWarehouse,
+                    unitPriceCents: productDetail.unitPriceCents,
+                    discountPercentage: productDetail.discountPercentage,
+                    productWeightGrams: productDetail.weightGrams,
+                    shippingCostCentsPerKg: warehouse.shippingCostCentsPerKg,
+                });
+
+                inventoryUpdates.push({
+                    productId: productId,
+                    warehouseId: warehouseId,
+                    quantityToDecrement: qtyToAllocateFromWarehouse,
+                });
+                remainingQtyToAllocate -= qtyToAllocateFromWarehouse;
+            }
+        }
+
+        if (remainingQtyToAllocate > 0) {
+            const allocatedForThisProduct = productDetail.requestedQuantity - remainingQtyToAllocate;
+            throw new InsufficientStockError(`Insufficient stock for product ID ${productId}. Requested: ${productDetail.requestedQuantity}, Allocated from available stock: ${allocatedForThisProduct}.`);
+        }
+    }
+    return { allocatedOrderLines, inventoryUpdates };
+}
+
+/**
+ * Calculates the total shipping cost for the allocated order lines.
+ *
+ * @param allocatedOrderLines Array of lines with allocated quantities and shipping details.
+ * @returns The total shipping cost in cents.
+ */
+function _calculateTotalShippingCost(allocatedOrderLines: AllocatedOrderLine[]): number {
+    let totalShippingCostCents = 0;
+    for (const line of allocatedOrderLines) {
+        const totalWeightKgForLine = (line.allocatedQuantity * line.productWeightGrams) / 1000;
+        const legShippingCost = Math.ceil(totalWeightKgForLine * line.shippingCostCentsPerKg);
+        totalShippingCostCents += legShippingCost;
+    }
+    return totalShippingCostCents;
+}
+
+/**
+ * Checks if the calculated shipping cost is within the allowed limit (15% of discounted order value).
+ *
+ * @param totalShippingCostCents The total calculated shipping cost.
+ * @param overallTotalPriceCents The total price of products before discount.
+ * @param overallTotalDiscountCents The total discount applied to products.
+ * @returns True if the shipping cost is valid, false otherwise.
+ */
+function _isShippingCostValid(
+    totalShippingCostCents: number,
+    overallTotalPriceCents: number,
+    overallTotalDiscountCents: number
+): boolean {
+    const overallDiscountedTotalPriceCents = overallTotalPriceCents - overallTotalDiscountCents;
+    const maxAllowedShippingCost = Math.max(0, Math.floor(0.15 * overallDiscountedTotalPriceCents));
+    return totalShippingCostCents <= maxAllowedShippingCost;
+}
+
+/**
+ * Prepares the order header and order line data for database insertion.
+ *
+ * @param orderId The generated ID for the new order.
+ * @param shippingLat Latitude of the shipping address.
+ * @param shippingLng Longitude of the shipping address.
+ * @param overallTotalPriceCents Total price of products before discount.
+ * @param overallTotalDiscountCents Total discount applied.
+ * @param totalShippingCostCents Total calculated shipping cost.
+ * @param allocatedOrderLines Array of allocated order lines.
+ * @returns An object containing parameters for creating order and order lines.
+ */
+function _prepareOrderCreationData(
+    orderId: string,
+    shippingLat: number,
+    shippingLng: number,
+    overallTotalPriceCents: number,
+    overallTotalDiscountCents: number,
+    totalShippingCostCents: number,
+    allocatedOrderLines: AllocatedOrderLine[]
+): { orderHeaderParams: orderRepository.CreateOrderParams, orderLineItemsData: orderRepository.OrderLineData[] } {
+    const orderHeaderParams: orderRepository.CreateOrderParams = {
+        orderId,
+        shippingAddrLatitude: shippingLat,
+        shippingAddrLongitude: shippingLng,
+        totalPriceCents: overallTotalPriceCents,
+        discountCents: overallTotalDiscountCents,
+        shippingCostCents: totalShippingCostCents,
+    };
+
+    const orderLineItemsData: orderRepository.OrderLineData[] = allocatedOrderLines.map(al => ({
+        productId: al.productId,
+        warehouseId: al.warehouseId,
+        quantity: al.allocatedQuantity,
+        unitPriceCents: al.unitPriceCents,
+        discountPercentage: al.discountPercentage,
+    }));
+
+    return { orderHeaderParams, orderLineItemsData };
+}
+
+
+// --- Main Service Function ---
 
 export async function createWalkInOrder(
     request: CreateOrderRequest
 ): Promise<CreateOrderResponse> {
-    const orderId = uuidv4(); // Generate Order ID upfront
 
     // 1. Parse shipping address coordinates (outside transaction)
     const shippingLat = parseFloat(request.shippingAddress.latitude);
@@ -56,112 +212,50 @@ export async function createWalkInOrder(
         reservationRepository.getReservedInventoryByWarehouseForProducts(db, productIds)
     ]);
 
-    // --- Process data fetched outside transaction ---
-
-    let overallTotalPriceCents = 0;
-    let overallTotalDiscountCents = 0;
-    for (const details of productDetailsMap.values()) {
-        overallTotalPriceCents += details.totalProductCostCents;
-        overallTotalDiscountCents += details.totalDiscountCents;
-    }
-
-    // Warehouse processing
-    if (sortedWarehouses.length === 0 && request.requestedProducts.length > 0) {
-        // This check might be more nuanced: if productDetailsMap is empty and request.requestedProducts was not,
-        // it means all product IDs were invalid, which calculateProductCostsWithDiscounts should have errored on.
-        // If request.requestedProducts was empty, productDetailsMap would also be empty.
-        // This mostly ensures warehouses exist if there are valid products to ship.
-        throw new Error("No warehouses available to fulfill the order.");
-    }
+    const { overallTotalPriceCents, overallTotalDiscountCents } = _calculateOverallProductTotals(productDetailsMap);
 
     return db.transaction(async (tx) => {
         // 4. Fetch Current Inventory (WITHIN TRANSACTION, WITH LOCKING)
         const currentInventoryByWarehouse = await inventoryRepository.getInventoryForProducts(productIds, tx);
 
         // 5. Allocate Products to Warehouses
-        const allocatedOrderLines: AllocatedOrderLine[] = [];
-        const inventoryUpdates: inventoryRepository.InventoryUpdateItem[] = [];
-
-        for (const [productId, productDetail] of productDetailsMap.entries()) {
-            let remainingQtyToAllocate = productDetail.requestedQuantity;
-
-            for (const warehouse of sortedWarehouses) {
-                if (remainingQtyToAllocate <= 0) break;
-
-                const warehouseId = warehouse.warehouseId;
-                const stockInWarehouse = currentInventoryByWarehouse[warehouseId]?.[productId] ?? 0;
-                const reservedInWarehouse = reservedInventoryByWarehouse[warehouseId]?.[productId] ?? 0;
-                const availableForWalkIn = Math.max(0, stockInWarehouse - reservedInWarehouse);
-
-                if (availableForWalkIn > 0) {
-                    const qtyToAllocateFromWarehouse = Math.min(remainingQtyToAllocate, availableForWalkIn);
-
-                    allocatedOrderLines.push({
-                        productId: productId,
-                        warehouseId: warehouseId,
-                        allocatedQuantity: qtyToAllocateFromWarehouse,
-                        unitPriceCents: productDetail.unitPriceCents,
-                        discountPercentage: productDetail.discountPercentage,
-                        productWeightGrams: productDetail.weightGrams,
-                        shippingCostCentsPerKg: warehouse.shippingCostCentsPerKg,
-                    });
-
-                    inventoryUpdates.push({
-                        productId: productId,
-                        warehouseId: warehouseId,
-                        quantityToDecrement: qtyToAllocateFromWarehouse,
-                    });
-                    remainingQtyToAllocate -= qtyToAllocateFromWarehouse;
-                }
-            }
-
-            if (remainingQtyToAllocate > 0) {
-                const allocatedForThisProduct = productDetail.requestedQuantity - remainingQtyToAllocate;
-                throw new InsufficientStockError(`Insufficient stock for product ID ${productId}. Requested: ${productDetail.requestedQuantity}, Allocated from available stock: ${allocatedForThisProduct}.`);
-            }
-        }
+        const { allocatedOrderLines, inventoryUpdates } = _performInventoryAllocation(
+            productDetailsMap,
+            sortedWarehouses,
+            currentInventoryByWarehouse,
+            reservedInventoryByWarehouse
+        );
 
         // 6. Calculate Shipping Cost
-        let totalShippingCostCents = 0;
-        for (const line of allocatedOrderLines) {
-            const totalWeightKgForLine = (line.allocatedQuantity * line.productWeightGrams) / 1000;
-            const legShippingCost = Math.ceil(totalWeightKgForLine * line.shippingCostCentsPerKg);
-            totalShippingCostCents += legShippingCost;
-        }
+        const totalShippingCostCents = _calculateTotalShippingCost(allocatedOrderLines);
 
         // 7. Validate Shipping Cost
-        const discountedProductTotal = overallTotalPriceCents - overallTotalDiscountCents;
-        const maxAllowedShippingCost = Math.floor(0.15 * discountedProductTotal);
-
-        if (totalShippingCostCents > maxAllowedShippingCost) {
+        if (!_isShippingCostValid(totalShippingCostCents, overallTotalPriceCents, overallTotalDiscountCents)) {
             throw new ShippingCostExceededError(
-                `Shipping cost (${totalShippingCostCents} cents) exceeds 15% of discounted order value (${discountedProductTotal} cents). Maximum allowed: ${maxAllowedShippingCost} cents.`
+                `Shipping cost (${totalShippingCostCents} cents) exceeds 15% of discounted order value.`
             );
         }
+
+        const orderId = uuidv4();
 
         // 8. Update Inventory
         await inventoryRepository.updateInventoryAndLogChanges(tx, inventoryUpdates, orderId);
 
-        // 9. Create Order and Order Lines
-        const orderHeaderParams: orderRepository.CreateOrderParams = {
+        // 9. Prepare Order and Order Lines data
+        const { orderHeaderParams, orderLineItemsData } = _prepareOrderCreationData(
             orderId,
-            shippingAddrLatitude: shippingLat,
-            shippingAddrLongitude: shippingLng,
-            totalPriceCents: overallTotalPriceCents,
-            discountCents: overallTotalDiscountCents,
-            shippingCostCents: totalShippingCostCents,
-        };
-        const orderLineItemsData: orderRepository.OrderLineData[] = allocatedOrderLines.map(al => ({
-            productId: al.productId,
-            warehouseId: al.warehouseId,
-            quantity: al.allocatedQuantity,
-            unitPriceCents: al.unitPriceCents,
-            discountPercentage: al.discountPercentage,
-        }));
+            shippingLat,
+            shippingLng,
+            overallTotalPriceCents,
+            overallTotalDiscountCents,
+            totalShippingCostCents,
+            allocatedOrderLines
+        );
 
+        // 10. Create Order and Order Lines in repository
         await orderRepository.createOrderAndLines(tx, orderHeaderParams, orderLineItemsData);
 
-        // 10. Return Response
+        // 11. Return Response
         return {
             orderId: orderId,
             totalPriceCents: overallTotalPriceCents,
