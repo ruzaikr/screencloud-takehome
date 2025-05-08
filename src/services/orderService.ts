@@ -50,7 +50,7 @@ export async function createWalkInOrder(
 
     // 3. Perform read-only operations in parallel (outside transaction, using main db client)
     const [
-        productCostDetailsList,
+        productDetailsMap,
         sortedWarehouses,
         reservedInventoryByWarehouse
     ] = await Promise.all([
@@ -61,22 +61,19 @@ export async function createWalkInOrder(
 
     // --- Process data fetched outside transaction ---
 
-    // Product details processing
-    const productDetailsMap = new Map<string, productRepository.ProductCostDetails>();
-    productCostDetailsList.forEach((details, index) => {
-        // calculateProductCostsWithDiscounts returns results in the order of input items
-        productDetailsMap.set(request.requestedProducts[index].id, details);
-    });
-
     let overallTotalPriceCents = 0;
     let overallTotalDiscountCents = 0;
-    for (const details of productCostDetailsList) {
+    for (const details of productDetailsMap.values()) {
         overallTotalPriceCents += details.totalProductCostCents;
         overallTotalDiscountCents += details.totalDiscountCents;
     }
 
     // Warehouse processing
     if (sortedWarehouses.length === 0 && request.requestedProducts.length > 0) {
+        // This check might be more nuanced: if productDetailsMap is empty and request.requestedProducts was not,
+        // it means all product IDs were invalid, which calculateProductCostsWithDiscounts should have errored on.
+        // If request.requestedProducts was empty, productDetailsMap would also be empty.
+        // This mostly ensures warehouses exist if there are valid products to ship.
         throw new Error("No warehouses available to fulfill the order.");
     }
     const warehouseShippingCostMap = new Map<string, number>(
@@ -85,40 +82,29 @@ export async function createWalkInOrder(
 
     return db.transaction(async (tx) => {
         // 4. Fetch Current Inventory (WITHIN TRANSACTION, WITH LOCKING)
+        // productIds could also be derived from productDetailsMap.keys() if preferred
         const currentInventoryByWarehouse = await inventoryRepository.getInventoryForProducts(productIds, tx);
 
         // 5. Allocate Products to Warehouses
-        // Uses:
-        // - `productDetailsMap` (from outside tx product costs)
-        // - `sortedWarehouses` (from outside tx warehouse sort)
-        // - `currentInventoryByWarehouse` (from INSIDE tx, locked inventory)
-        // - `reservedInventoryByWarehouseData` (from OUTSIDE tx, snapshot of reservations)
         const allocatedOrderLines: AllocatedOrderLine[] = [];
         const inventoryUpdates: inventoryRepository.InventoryUpdateItem[] = [];
 
-        for (const reqProduct of request.requestedProducts) {
-            let remainingQtyToAllocate = reqProduct.quantity;
-            const productDetail = productDetailsMap.get(reqProduct.id);
-
-            if (!productDetail) {
-                // This should ideally be caught by calculateProductCostsWithDiscounts if a product ID is invalid.
-                // This is an assertion for internal consistency.
-                throw new Error(`Internal Error: Details for product ID ${reqProduct.id} not found after initial fetch.`);
-            }
+        for (const [productId, productDetail] of productDetailsMap.entries()) {
+            let remainingQtyToAllocate = productDetail.requestedQuantity;
 
             for (const warehouse of sortedWarehouses) {
                 if (remainingQtyToAllocate <= 0) break;
 
                 const warehouseId = warehouse.warehouseId;
-                const stockInWarehouse = currentInventoryByWarehouse[warehouseId]?.[reqProduct.id] ?? 0;
-                const reservedInWarehouse = reservedInventoryByWarehouse[warehouseId]?.[reqProduct.id] ?? 0;
+                const stockInWarehouse = currentInventoryByWarehouse[warehouseId]?.[productId] ?? 0;
+                const reservedInWarehouse = reservedInventoryByWarehouse[warehouseId]?.[productId] ?? 0;
                 const availableForWalkIn = Math.max(0, stockInWarehouse - reservedInWarehouse);
 
                 if (availableForWalkIn > 0) {
                     const qtyToAllocateFromWarehouse = Math.min(remainingQtyToAllocate, availableForWalkIn);
 
                     allocatedOrderLines.push({
-                        productId: reqProduct.id,
+                        productId: productId,
                         warehouseId: warehouseId,
                         allocatedQuantity: qtyToAllocateFromWarehouse,
                         unitPriceCents: productDetail.unitPriceCents,
@@ -127,7 +113,7 @@ export async function createWalkInOrder(
                     });
 
                     inventoryUpdates.push({
-                        productId: reqProduct.id,
+                        productId: productId,
                         warehouseId: warehouseId,
                         quantityToDecrement: qtyToAllocateFromWarehouse,
                     });
@@ -136,19 +122,17 @@ export async function createWalkInOrder(
             }
 
             if (remainingQtyToAllocate > 0) {
-                const allocatedForThisProduct = reqProduct.quantity - remainingQtyToAllocate;
-                throw new InsufficientStockError(`Insufficient stock for product ID ${reqProduct.id}. Requested: ${reqProduct.quantity}, Allocated from available stock: ${allocatedForThisProduct}.`);
+                const allocatedForThisProduct = productDetail.requestedQuantity - remainingQtyToAllocate;
+                throw new InsufficientStockError(`Insufficient stock for product ID ${productId}. Requested: ${productDetail.requestedQuantity}, Allocated from available stock: ${allocatedForThisProduct}.`);
             }
         }
 
         // 6. Calculate Shipping Cost
-        // Uses `allocatedOrderLines` (derived from locked stock) and `warehouseShippingCostMap` (from outside tx)
         let totalShippingCostCents = 0;
         for (const line of allocatedOrderLines) {
             const totalWeightKgForLine = (line.allocatedQuantity * line.productWeightGrams) / 1000;
             const shippingCostPerKg = warehouseShippingCostMap.get(line.warehouseId);
             if (shippingCostPerKg === undefined) {
-                // This would indicate an internal logic error.
                 throw new Error(`Internal Error: Shipping cost per kg not found for warehouse ${line.warehouseId}.`);
             }
             const legShippingCost = Math.ceil(totalWeightKgForLine * shippingCostPerKg);
@@ -166,17 +150,16 @@ export async function createWalkInOrder(
         }
 
         // 8. Update Inventory
-        // `inventoryUpdates` derived from locked stock, `orderId` generated upfront.
         await inventoryRepository.updateInventoryAndLogChanges(tx, inventoryUpdates, orderId);
 
         // 9. Create Order and Order Lines
         const orderHeaderParams: orderRepository.CreateOrderParams = {
             orderId,
-            shippingAddrLatitude: shippingLat,           // from outside tx
-            shippingAddrLongitude: shippingLng,          // from outside tx
-            totalPriceCents: overallTotalPriceCents,     // from outside tx
-            discountCents: overallTotalDiscountCents,    // from outside tx
-            shippingCostCents: totalShippingCostCents,   // calculated within tx scope, but based on outside data + allocation
+            shippingAddrLatitude: shippingLat,
+            shippingAddrLongitude: shippingLng,
+            totalPriceCents: overallTotalPriceCents,
+            discountCents: overallTotalDiscountCents,
+            shippingCostCents: totalShippingCostCents,
         };
         const orderLineItemsData: orderRepository.OrderLineData[] = allocatedOrderLines.map(al => ({
             productId: al.productId,

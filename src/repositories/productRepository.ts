@@ -14,6 +14,8 @@ export interface ProductQuantityInput {
  * Represents the calculated cost details for a product, including discounts.
  */
 export interface ProductCostDetails {
+    /** The quantity of the product that was requested and used for these calculations. */
+    requestedQuantity: number;
     /** The base price per unit for the product, in cents. */
     unitPriceCents: number;
     /** The weight of a single unit of the product, in grams. */
@@ -38,28 +40,25 @@ export interface ProductCostDetails {
  *
  * @param dbx The Drizzle database executor (db or tx).
  * @param items An array of ProductQuantityInput objects, each specifying a productId and quantity.
- * @returns A Promise resolving to an array of ProductCostDetails objects,
- *          corresponding to each input item.
+ * @returns A Promise resolving to a Map where keys are productIds and values are
+ *          ProductCostDetails objects (which now include requestedQuantity).
  * @throws Error if any productId in the input items does not correspond to an existing product.
  */
 export async function calculateProductCostsWithDiscounts(
     dbx: DatabaseExecutor,
     items: ProductQuantityInput[]
-): Promise<ProductCostDetails[]> {
+): Promise<Map<string, ProductCostDetails>> {
     if (!items || items.length === 0) {
-        return [];
+        return new Map();
     }
 
     const productIds = items.map(item => item.productId);
-    // Use a Set to get unique product IDs for efficient fetching
     const uniqueProductIds = [...new Set(productIds)];
 
-    // Defensive check, though covered by the first items.length check if productIds must be non-empty
     if (uniqueProductIds.length === 0) {
-        return [];
+        return new Map();
     }
 
-    // 1. Fetch product base details (price, weight)
     const fetchedProducts = await dbx
         .select({
             id: products.id,
@@ -69,7 +68,6 @@ export async function calculateProductCostsWithDiscounts(
         .from(products)
         .where(inArray(products.id, uniqueProductIds));
 
-    // Store product data in a Map for quick lookup: Map<productId, {unitPriceCents, weightGrams}>
     const productDataMap = new Map(
         fetchedProducts.map(p => [
             p.id,
@@ -77,82 +75,65 @@ export async function calculateProductCostsWithDiscounts(
         ])
     );
 
-    // 2. Fetch all relevant volume discounts for these products
-    // Order by threshold descending to easily find the best applicable discount later
     const fetchedDiscounts = await dbx
         .select({
             productId: volumeDiscounts.productId,
             threshold: volumeDiscounts.threshold,
-            discountPercentage: volumeDiscounts.discountPercentage, // This is a string from DB, e.g., "15.00"
+            discountPercentage: volumeDiscounts.discountPercentage,
         })
         .from(volumeDiscounts)
         .where(inArray(volumeDiscounts.productId, uniqueProductIds))
-        .orderBy(desc(volumeDiscounts.threshold)); // Crucial: highest thresholds first globally
+        .orderBy(desc(volumeDiscounts.threshold));
 
-    // Group discounts by productId. The discounts for each product will be sorted by threshold descending.
-    // Map<productId, Array<{threshold, discountPercentage}>>
     const productDiscountsMap = new Map<string, Array<{ threshold: number; discountPercentage: string }>>();
     for (const discount of fetchedDiscounts) {
         if (!productDiscountsMap.has(discount.productId)) {
             productDiscountsMap.set(discount.productId, []);
         }
-        // Since fetchedDiscounts is sorted by threshold DESC globally,
-        // pushing them into product-specific arrays preserves this order for each product's list of discounts.
         productDiscountsMap.get(discount.productId)!.push({
             threshold: discount.threshold,
-            discountPercentage: discount.discountPercentage // Keep as string initially
+            discountPercentage: discount.discountPercentage
         });
     }
 
-    // 3. Process each input item to calculate costs and apply discounts
-    const results: ProductCostDetails[] = [];
+    const resultsMap = new Map<string, ProductCostDetails>();
     for (const item of items) {
         const productInfo = productDataMap.get(item.productId);
 
         if (!productInfo) {
-            // If a product ID from input is not found, it's an error condition.
-            // This indicates invalid input or a data integrity issue.
             throw new Error(`Product details not found for productId: ${item.productId}. Ensure all product IDs are valid.`);
         }
 
         const { unitPriceCents, weightGrams } = productInfo;
-        const quantity = item.quantity;
+        const requestedQuantity = item.quantity; // Capture requested quantity
 
-        let appliedDiscountPercentageValue = 0.0; // Default to 0% discount
-
+        let appliedDiscountPercentageValue = 0.0;
         const discountsForProduct = productDiscountsMap.get(item.productId) || [];
 
-        // Find the best applicable discount for the current product and quantity.
-        // Discounts for this product are already sorted by threshold in descending order.
         for (const vd of discountsForProduct) {
-            if (quantity >= vd.threshold) {
-                // vd.discountPercentage is a string like "15.00", parse it to a number for calculation.
+            if (requestedQuantity >= vd.threshold) {
                 appliedDiscountPercentageValue = parseFloat(vd.discountPercentage);
-                break; // Found the highest threshold discount that applies, so stop.
+                break;
             }
         }
 
-        // Calculate costs
-        const totalProductCostCents = unitPriceCents * quantity;
-
-        // Apply discount. Ensure discount calculation is done carefully.
-        // The discount percentage is used as a float (e.g., 15.0 for 15%).
-        // Result is rounded to the nearest cent.
+        const totalProductCostCents = unitPriceCents * requestedQuantity;
         const totalDiscountCents = Math.round(
             totalProductCostCents * (appliedDiscountPercentageValue / 100)
         );
-
         const totalDiscountedProductCostCents = totalProductCostCents - totalDiscountCents;
 
-        results.push({
+        const costDetails: ProductCostDetails = {
+            requestedQuantity,
             unitPriceCents,
             weightGrams,
-            discountPercentage: appliedDiscountPercentageValue, // Store as a number (e.g., 15.0 or 15.25)
+            discountPercentage: appliedDiscountPercentageValue,
             totalProductCostCents,
             totalDiscountCents,
             totalDiscountedProductCostCents,
-        });
+        };
+        resultsMap.set(item.productId, costDetails);
     }
 
-    return results;
+    return resultsMap;
 }
