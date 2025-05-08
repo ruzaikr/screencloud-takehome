@@ -1,14 +1,7 @@
 import type { DatabaseExecutor } from '../db/client';
 import { products, volumeDiscounts } from '../db/schema';
 import { inArray, desc } from 'drizzle-orm';
-
-/**
- * Represents an item in the input, specifying a product and its quantity.
- */
-export interface ProductQuantityInput {
-    productId: string;
-    quantity: number;
-}
+import { OrderRequestedProduct  } from "../schemas/order";
 
 /**
  * Represents the calculated cost details for a product, including discounts.
@@ -39,14 +32,14 @@ export interface ProductCostDetails {
  * This function can operate with either a main DB connection or a transaction.
  *
  * @param dbx The Drizzle database executor (db or tx).
- * @param items An array of ProductQuantityInput objects, each specifying a productId and quantity.
+ * @param items An array of OrderRequestedProduct objects, each specifying a productId and quantity.
  * @returns A Promise resolving to a Map where keys are productIds and values are
- *          ProductCostDetails objects (which now include requestedQuantity).
+ *          ProductCostDetails objects.
  * @throws Error if any productId in the input items does not correspond to an existing product.
  */
 export async function calculateProductCostsWithDiscounts(
     dbx: DatabaseExecutor,
-    items: ProductQuantityInput[]
+    items: OrderRequestedProduct[]
 ): Promise<Map<string, ProductCostDetails>> {
     if (!items || items.length === 0) {
         return new Map();

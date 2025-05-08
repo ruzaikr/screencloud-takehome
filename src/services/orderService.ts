@@ -42,12 +42,8 @@ export async function createWalkInOrder(
     const shippingLat = parseFloat(request.shippingAddress.latitude);
     const shippingLng = parseFloat(request.shippingAddress.longitude);
 
-    // 2. Prepare inputs for repository calls (outside transaction)
-    const productQuantityInputs: productRepository.ProductQuantityInput[] = request.requestedProducts.map(p => ({
-        productId: p.id,
-        quantity: p.quantity,
-    }));
-    const productIds = request.requestedProducts.map(p => p.id);
+    // 2. Extract productIds from request
+    const productIds = request.requestedProducts.map(p => p.productId);
 
     // 3. Perform read-only operations in parallel (outside transaction, using main db client)
     const [
@@ -55,7 +51,7 @@ export async function createWalkInOrder(
         sortedWarehouses,
         reservedInventoryByWarehouse
     ] = await Promise.all([
-        productRepository.calculateProductCostsWithDiscounts(db, productQuantityInputs),
+        productRepository.calculateProductCostsWithDiscounts(db, request.requestedProducts),
         warehouseRepository.getWarehousesSortedByShippingCost(db, shippingLat, shippingLng),
         reservationRepository.getReservedInventoryByWarehouseForProducts(db, productIds)
     ]);

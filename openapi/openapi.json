@@ -84,7 +84,7 @@
             "OrderRequestedProduct": {
                 "type": "object",
                 "properties": {
-                    "id": {
+                    "productId": {
                         "type": "string",
                         "format": "uuid",
                         "description": "UUID of the product.",
@@ -98,7 +98,7 @@
                     }
                 },
                 "required": [
-                    "id",
+                    "productId",
                     "quantity"
                 ]
             },

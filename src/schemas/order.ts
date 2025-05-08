@@ -8,9 +8,10 @@ export const OrderShippingAddressSchema = z.object({
 
 // Schema for a single requested product
 export const OrderRequestedProductSchema = z.object({
-    id: z.string().uuid({ message: "Invalid product ID format (UUID required)" }),
+    productId: z.string().uuid({ message: "Invalid product ID format (UUID required)" }),
     quantity: z.number().int().positive({ message: "Product quantity must be a positive integer" }),
 });
+export type OrderRequestedProduct = z.infer<typeof OrderRequestedProductSchema>;
 
 // Schema for the POST /orders request body
 export const CreateOrderRequestSchema = z.object({
