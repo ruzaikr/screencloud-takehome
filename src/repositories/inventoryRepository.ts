@@ -32,10 +32,10 @@ export interface ProductInventoryByWarehouse {
  * quantities in that warehouse. The selected inventory rows are locked using
  * `FOR UPDATE` to prevent concurrent modifications until the transaction completes.
  *
- * @param productIds - An array of product ID strings (UUIDs).
  * @param tx - A Drizzle transaction object. This object must have been
  *                            obtained from a Drizzle instance initialized with the schema
  *                            (e.g., `db = drizzle(pool, { schema })`).
+ * @param productIds - An array of product ID strings (UUIDs).
  * @returns A promise that resolves to a `ProductInventoryByWarehouse` object.
  *          If a product ID from the input list has no inventory in any warehouse,
  *          it will not be included in the result. If a warehouse does not stock
@@ -44,8 +44,8 @@ export interface ProductInventoryByWarehouse {
  *          object is returned.
  */
 export async function getInventoryForProducts(
+    tx: AppTransactionExecutor,
     productIds: string[],
-    tx: AppTransactionExecutor
 ): Promise<ProductInventoryByWarehouse> {
     if (!productIds || productIds.length === 0) {
         return {};

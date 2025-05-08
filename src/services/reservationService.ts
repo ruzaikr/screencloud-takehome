@@ -11,7 +11,7 @@ import {
 } from "./shared/helpers";
 import * as inventoryRepository from "../repositories/inventoryRepository";
 
-export async function mainReservationServiceFunction( // @todo: rename function
+export async function reserve(
     request: CreateOrderRequest,
 ): Promise<CheckReservationResponse> {
 
@@ -23,18 +23,19 @@ export async function mainReservationServiceFunction( // @todo: rename function
     const [
         productDetailsMap,
         sortedWarehouses,
-        reservedInventoryByWarehouse
     ] = await Promise.all([
         productRepository.calculateProductCostsWithDiscounts(db, request.requestedProducts),
         warehouseRepository.getWarehousesSortedByShippingCost(db, shippingLat, shippingLng),
-        reservationRepository.getReservedInventoryByWarehouseForProducts(db, productIds)
     ]);
 
     const { overallTotalPriceCents, overallTotalDiscountCents } = calculateOverallProductTotals(productDetailsMap);
 
     return db.transaction(async (tx) => {
-        // Fetch Current Inventory (WITHIN TRANSACTION, WITH LOCKING)
-        const currentInventoryByWarehouse = await inventoryRepository.getInventoryForProducts(productIds, tx);
+        // Fetch Current Inventory (with locking)
+        const currentInventoryByWarehouse = await inventoryRepository.getInventoryForProducts(tx, productIds);
+
+        // Fetch Reserved Inventory (no locking here because updates to reservations require acquiring a lock on inventories)
+        const reservedInventoryByWarehouse = await reservationRepository.getReservedInventoryByWarehouseForProducts(tx, productIds)
 
         // `inventoryUpdates` will be used to create reservation lines
         const { allocatedOrderLines, inventoryUpdates } = performInventoryAllocation(

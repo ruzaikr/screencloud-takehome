@@ -82,7 +82,7 @@ router.post('/', async (
     }
 
     try {
-        const feasibilityDetails = await reservationService.mainReservationServiceFunction(parsedRequest.data);
+        const feasibilityDetails = await reservationService.reserve(parsedRequest.data);
 
         // If feasibilityDetails.isValid is false, it means a business rule failed (inventory or shipping)
         // The service.ts already populates the message field in feasibilityDetails for this.
