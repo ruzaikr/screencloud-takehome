@@ -6,7 +6,7 @@
     "lint": "eslint ./src --ext .ts",
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "db:migrate": "drizzle-kit migrate --config drizzle.config.ts",
-    "db:seed": "ts-node-dev --transpile-only src/db/seed.ts",
+    "db:seed": "ts-node-dev --transpile-only db/seed.js",
     "db:seed:prod": "node dist/db/seed.js"
   },
   "devDependencies": {

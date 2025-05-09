@@ -19,6 +19,11 @@ echo "Applying database migrations..."
 npm run db:migrate
 echo "Database migrations applied successfully."
 
+# Seed database
+echo "Seeding database..."
+npm run db:seed:prod
+echo "Database seeded successfully"
+
 # Optional: Run database seed script (make sure your seed script is idempotent)
 # If you want to seed the database automatically on startup:
 # echo "Running database seed..."
