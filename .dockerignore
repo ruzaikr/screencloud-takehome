@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+*.log
+pgdata
+.git
+.github
+.idea

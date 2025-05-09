@@ -3,7 +3,7 @@ import {
     products,
     volumeDiscounts,
     warehouses,
-    inventory,
+    inventory as inventoryTable,
 } from "./schema";
 
 async function seed() {
@@ -36,7 +36,7 @@ async function seed() {
             })
             .returning({id: warehouses.id});
 
-        await db.insert(inventory).values({
+        await db.insert(inventoryTable).values({
             productId,
             warehouseId,
             quantity: inventory,
