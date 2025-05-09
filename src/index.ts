@@ -41,7 +41,7 @@ app.get("/health", (_req, res) => {
 
 // Global Error Handling Middleware
 // This should be the last middleware added.
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction): void => {
+app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction): void => {
 
     // Log the full error for server-side diagnostics, except for known operational ZodValidationErrors
     // which might be too verbose if they happen often and are expected user input errors.
