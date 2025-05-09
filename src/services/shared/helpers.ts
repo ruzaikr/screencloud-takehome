@@ -4,10 +4,16 @@ import * as inventoryRepository from '../../repositories/inventoryRepository';
 import * as reservationRepository from '../../repositories/reservationRepository';
 import * as orderRepository from "../../repositories/orderRepository";
 
-export class InsufficientInventoryError extends Error {
+/**
+ * Internal error type thrown by performInventoryAllocation if requested quantity cannot be met.
+ * This is intended to be caught and translated by calling services.
+ */
+export class InventoryAllocationError extends Error {
     constructor(message: string) {
         super(message);
-        this.name = "InsufficientInventoryError";
+        this.name = "InventoryAllocationError";
+        Object.setPrototypeOf(this, new.target.prototype);
+        Error.captureStackTrace(this, this.constructor);
     }
 }
 
@@ -47,7 +53,7 @@ export function calculateOverallProductTotals(
  * @param currentInventoryByWarehouse Current inventory levels, locked for update.
  * @param reservedInventoryByWarehouse Current reserved inventory levels.
  * @returns An object containing allocated order lines and inventory update items.
- * @throws InsufficientInventoryError if any product cannot be fully allocated.
+ * @throws InventoryAllocationError if any product cannot be fully allocated from available (current - reserved) stock.
  */
 export function performInventoryAllocation(
     productDetailsMap: Map<string, productRepository.ProductCostDetails>,
@@ -93,7 +99,8 @@ export function performInventoryAllocation(
 
         if (remainingQtyToAllocate > 0) {
             const allocatedForThisProduct = productDetail.requestedQuantity - remainingQtyToAllocate;
-            throw new InsufficientInventoryError(`Insufficient inventory for product ID ${productId}. Requested: ${productDetail.requestedQuantity}, Allocated from available inventory: ${allocatedForThisProduct}.`);
+            // Throw the internal error type, to be translated by the service layer
+            throw new InventoryAllocationError(`Insufficient inventory for product ID ${productId}. Requested: ${productDetail.requestedQuantity}, Available (after reservations): ${allocatedForThisProduct}.`);
         }
     }
     return { allocatedOrderLines, inventoryUpdates };
@@ -129,7 +136,11 @@ export function isShippingCostValid(
     overallTotalDiscountCents: number
 ): boolean {
     const overallDiscountedTotalPriceCents = overallTotalPriceCents - overallTotalDiscountCents;
-    const maxAllowedShippingCost = Math.max(0, Math.floor(0.15 * overallDiscountedTotalPriceCents));
+    // Handle cases where discounted price is zero or negative to avoid negative maxAllowedShippingCost
+    if (overallDiscountedTotalPriceCents <= 0) {
+        return totalShippingCostCents === 0; // Only valid if shipping is also zero
+    }
+    const maxAllowedShippingCost = Math.floor(0.15 * overallDiscountedTotalPriceCents);
     return totalShippingCostCents <= maxAllowedShippingCost;
 }
 

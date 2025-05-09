@@ -2,6 +2,7 @@ import type { DatabaseExecutor } from '../db/client';
 import { products, volumeDiscounts } from '../db/schema';
 import { inArray, desc } from 'drizzle-orm';
 import { OrderRequestedProduct  } from "../schemas/order";
+import { ProductNotFoundError } from '../errors/customErrors';
 
 /**
  * Represents the calculated cost details for a product, including discounts.
@@ -35,7 +36,7 @@ export interface ProductCostDetails {
  * @param items An array of OrderRequestedProduct objects, each specifying a productId and quantity.
  * @returns A Promise resolving to a Map where keys are productIds and values are
  *          ProductCostDetails objects.
- * @throws Error if any productId in the input items does not correspond to an existing product.
+ * @throws ProductNotFoundError if any productId in the input items does not correspond to an existing product.
  */
 export async function calculateProductCostsWithDiscounts(
     dbx: DatabaseExecutor,
@@ -68,6 +69,13 @@ export async function calculateProductCostsWithDiscounts(
         ])
     );
 
+    // Check if all requested product IDs were found
+    for (const item of items) {
+        if (!productDataMap.has(item.productId)) {
+            throw new ProductNotFoundError(item.productId);
+        }
+    }
+
     const fetchedDiscounts = await dbx
         .select({
             productId: volumeDiscounts.productId,
@@ -93,12 +101,15 @@ export async function calculateProductCostsWithDiscounts(
     for (const item of items) {
         const productInfo = productDataMap.get(item.productId);
 
+        // This check is now redundant due to the earlier check, but kept for safety/clarity if logic changes.
+        // It should ideally not be reached if the previous check is in place.
         if (!productInfo) {
-            throw new Error(`Product details not found for productId: ${item.productId}. Ensure all product IDs are valid.`);
+            // Should have been caught by the check after fetching products
+            throw new ProductNotFoundError(item.productId);
         }
 
         const { unitPriceCents, weightGrams } = productInfo;
-        const requestedQuantity = item.quantity; // Capture requested quantity
+        const requestedQuantity = item.quantity;
 
         let appliedDiscountPercentageValue = 0.0;
         const discountsForProduct = productDiscountsMap.get(item.productId) || [];

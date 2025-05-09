@@ -11,17 +11,10 @@ import {
     performInventoryAllocation,
     calculateTotalShippingCost,
     isShippingCostValid,
-    prepareOrderCreationData
+    prepareOrderCreationData,
+    InventoryAllocationError
 } from "./shared/helpers";
-
-export class ShippingCostExceededError extends Error {
-    constructor(message: string) {
-        super(message);
-        this.name = "ShippingCostExceededError";
-    }
-}
-
-// --- Main Service Function ---
+import { InsufficientInventoryError, ShippingCostExceededError } from '../errors/customErrors';
 
 export async function createWalkInOrder(
     request: CreateOrderRequest
@@ -43,24 +36,38 @@ export async function createWalkInOrder(
     const { overallTotalPriceCents, overallTotalDiscountCents } = calculateOverallProductTotals(productDetailsMap);
 
     return db.transaction(async (tx) => {
-        // Fetch Current Inventory (with locking)
+        // Fetch Current Inventory (with locking to ensure consistent read for allocation check)
         const currentInventoryByWarehouse = await inventoryRepository.getInventoryForProducts(tx, productIds);
 
-        // Fetch Reserved Inventory (no locking here because updates to reservations require acquiring a lock on inventories)
-        const reservedInventoryByWarehouse = await reservationRepository.getReservedInventoryByWarehouseForProducts(tx, productIds)
+        // Fetch Reserved Inventory (reads committed data, consistent within this transaction)
+        const reservedInventoryByWarehouse = await reservationRepository.getReservedInventoryByWarehouseForProducts(tx, productIds);
 
-        const { allocatedOrderLines, inventoryUpdates } = performInventoryAllocation(
-            productDetailsMap,
-            sortedWarehouses,
-            currentInventoryByWarehouse,
-            reservedInventoryByWarehouse
-        );
+        let allocatedOrderLines;
+        let inventoryUpdates;
+
+        try {
+            const allocationResult = performInventoryAllocation(
+                productDetailsMap,
+                sortedWarehouses,
+                currentInventoryByWarehouse,
+                reservedInventoryByWarehouse
+            );
+            allocatedOrderLines = allocationResult.allocatedOrderLines;
+            inventoryUpdates = allocationResult.inventoryUpdates;
+        } catch (error) {
+            if (error instanceof InventoryAllocationError) {
+                // Translate to the user-facing error with 409 status
+                throw new InsufficientInventoryError(error.message);
+            }
+            throw error; // Re-throw other unexpected errors from allocation
+        }
+
 
         const totalShippingCostCents = calculateTotalShippingCost(allocatedOrderLines);
 
         if (!isShippingCostValid(totalShippingCostCents, overallTotalPriceCents, overallTotalDiscountCents)) {
             throw new ShippingCostExceededError(
-                `Shipping cost (${totalShippingCostCents} cents) exceeds 15% of discounted order value.`
+                `Shipping cost (${totalShippingCostCents} cents) exceeds 15% of discounted order value (${overallTotalPriceCents - overallTotalDiscountCents} cents).`
             );
         }
 
