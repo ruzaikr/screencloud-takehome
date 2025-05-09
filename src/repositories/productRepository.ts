@@ -3,6 +3,7 @@ import { products, volumeDiscounts } from '../db/schema';
 import { inArray, desc } from 'drizzle-orm';
 import { OrderRequestedProduct  } from "../schemas/order";
 import { ProductNotFoundError } from '../errors/customErrors';
+import type { Product } from '../schemas/product';
 
 /**
  * Represents the calculated cost details for a product, including discounts.
@@ -140,4 +141,23 @@ export async function calculateProductCostsWithDiscounts(
     }
 
     return resultsMap;
+}
+
+
+/**
+ * Retrieves all products from the database.
+ *
+ * @param dbx The Drizzle database executor (db or tx).
+ * @returns A Promise resolving to an array of Product objects.
+ */
+export async function getAllProducts(dbx: DatabaseExecutor): Promise<Product[]> {
+    const result = await dbx
+        .select({
+            id: products.id,
+            name: products.name,
+            unitPriceCents: products.unitPriceCents,
+            weightGrams: products.weightGrams,
+        })
+        .from(products);
+    return result;
 }

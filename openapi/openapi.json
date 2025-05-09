@@ -6,6 +6,41 @@
         "description": "API for managing products, inventory, warehouses, orders, and reservations."
     },
     "paths": {
+        "/products": {
+            "get": {
+                "summary": "Get all products",
+                "description": "Returns a list of all products available in the system.",
+                "operationId": "getProducts",
+                "tags": [
+                    "Products"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A list of products.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Product"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/orders": {
             "post": {
                 "summary": "Place a new order",
@@ -137,6 +172,34 @@
     },
     "components": {
         "schemas": {
+            "Product": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "UUID of the product."
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Name of the product."
+                    },
+                    "unitPriceCents": {
+                        "type": "integer",
+                        "description": "Unit price of the product in cents."
+                    },
+                    "weightGrams": {
+                        "type": "integer",
+                        "description": "Weight of the product in grams."
+                    }
+                },
+                "required": [
+                    "id",
+                    "name",
+                    "unitPriceCents",
+                    "weightGrams"
+                ]
+            },
             "OrderShippingAddress": {
                 "type": "object",
                 "properties": {

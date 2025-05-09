@@ -2,6 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import ordersRouter from "./routes/orders";
 import reservationsRouter from "./routes/reservations";
+import productsRouter from "./routes/products"; // Added import
 import swaggerUi from "swagger-ui-express";
 import fs from "fs";
 import path from "path";
@@ -31,6 +32,7 @@ app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapiDocument));
 
 app.use("/orders", ordersRouter);
 app.use("/reservations", reservationsRouter);
+app.use("/products", productsRouter);
 
 app.get("/health", (_req, res) => {
     res.json({
