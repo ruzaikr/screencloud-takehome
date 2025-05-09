@@ -34,7 +34,6 @@ COPY --from=builder /usr/src/app/dist ./dist
 COPY --from=builder /usr/src/app/openapi ./openapi
 COPY --from=builder /usr/src/app/drizzle ./drizzle
 COPY --from=builder /usr/src/app/drizzle.config.ts ./
-RUN npm install ts-node
 
 COPY entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh
