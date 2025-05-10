@@ -1,7 +1,5 @@
 import dotenv from 'dotenv';
 
-// Load .env file from the project root.
-// This should be one of the first things your application does.
 dotenv.config();
 
 function getEnvVar(key: string, isOptional: boolean = false): string {
