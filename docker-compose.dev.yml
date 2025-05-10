@@ -1,9 +1,7 @@
-version: '3.8' # Specify compose file version
-
 services:
   db:
     image: postgres:15-alpine
-    container_name: my_postgres_db_dev # Suffix with _dev
+    container_name: my_postgres_db_dev
     restart: always
     environment:
       POSTGRES_USER: docker_user
@@ -12,7 +10,7 @@ services:
     ports:
       - "5432:5432" # Expose to host for direct DB access if needed
     volumes:
-      - pgdata_dev:/var/lib/postgresql/data # Suffix volume with _dev
+      - pgdata_dev:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U docker_user -d docker_db"]
       interval: 10s
@@ -22,16 +20,17 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile # Uses the main, now simplified, Dockerfile
-    container_name: my_api_dev # Suffix with _dev
+      dockerfile: Dockerfile
+    container_name: my_api_dev
     restart: unless-stopped
     ports:
       - "3002:3002"
+      - "9229:9229" # Node.js debug port (host:container)
     environment:
       # This DATABASE_URL points to the 'db' service within Docker's network
       DATABASE_URL: postgresql://docker_user:docker_password@db:5432/docker_db?sslmode=disable
       PORT: 3002
-      NODE_ENV: development # Explicitly set for development
+      NODE_ENV: development
       # For potential use by pg_isready if scripts inside container need it (drizzle uses DATABASE_URL)
       PG_HOST: db
       PG_PORT: 5432
@@ -44,14 +43,12 @@ services:
     depends_on:
       db:
         condition: service_healthy # Wait for the DB to be healthy before starting API
-    # The API will start using CMD ["npm", "start"] from the Dockerfile.
-    # If you want hot-reloading for development (e.g., with ts-node-dev):
-    # command: npm run dev
-    # volumes:
-    #   - ./src:/usr/src/app/src # Mount your source code
-    #   - ./tsconfig.json:/usr/src/app/tsconfig.json
-    #   # Note: package.json changes would require a rebuild unless also mounted
-    #   # and node_modules handled carefully (often best to let container manage them)
+    volumes:
+      - ./src:/usr/src/app/src
+      - ./openapi:/usr/src/app/openapi
+      - ./tsconfig.json:/usr/src/app/tsconfig.json
+      - ./drizzle.config.ts:/usr/src/app/drizzle.config.ts
+    command: sh -c "npm run dev"
 
 volumes:
   pgdata_dev: # Defines the named volume for PostgreSQL data persistence in dev

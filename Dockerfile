@@ -21,19 +21,7 @@ WORKDIR /usr/src/app
 COPY package.json ./
 COPY package-lock.json ./
 
-# Install only production dependencies for a leaner image.
-# However, if 'drizzle-kit' (typically a devDep) is needed for 'npm run db:migrate'
-# run via 'docker-compose exec' in development, it needs to be available.
-# EITHER: Move 'drizzle-kit' to 'dependencies' in package.json (simplest for now)
-# OR:     Copy it from the builder stage (more complex to manage its binaries)
-# OR:     Use a multi-stage Dockerfile for migration tasks.
-# Assuming 'drizzle-kit' will be moved to 'dependencies' for this dev setup.
 RUN npm install --omit=dev
-# If 'drizzle-kit' stays in devDependencies and you need it:
-# RUN npm install # This would install devDependencies too.
-# Or copy necessary parts from builder (can be tricky):
-# COPY --from=builder /usr/src/app/node_modules/drizzle-kit /usr/src/app/node_modules/drizzle-kit
-# COPY --from=builder /usr/src/app/node_modules/.bin/drizzle-kit /usr/src/app/node_modules/.bin/drizzle-kit
 
 # postgresql-client is needed if 'drizzle-kit migrate' shells out to psql or for 'pg_isready'
 # Drizzle ORM itself uses the 'pg' driver.
@@ -44,7 +32,6 @@ COPY --from=builder /usr/src/app/dist ./dist
 COPY --from=builder /usr/src/app/openapi ./openapi
 COPY --from=builder /usr/src/app/drizzle ./drizzle
 COPY --from=builder /usr/src/app/drizzle.config.ts ./drizzle.config.ts
-# We DO NOT copy entrypoint.sh by default into this image
 
 EXPOSE 3002
 
