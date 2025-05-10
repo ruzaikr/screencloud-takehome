@@ -1,43 +1,7 @@
 import type { DatabaseExecutor } from '../db/client';
 import { warehouses as warehousesTable } from '../db/schema';
 import { calculateDistanceKm } from "../utils/shippingUtils";
-import dotenv from 'dotenv';
-
-// Load environment variables from .env file
-dotenv.config();
-
-// --- Configuration ---
-
-/**
- * Retrieves and validates the shipping cost configuration from environment variables.
- * This function is called once when the module is loaded.
- * @throws Error if the environment variable is missing or invalid.
- * @returns The shipping cost in cents per kilogram per kilometer.
- */
-function getShippingCostCentsPerKgPerKmFromEnv(): number {
-    const costString = process.env.SHIPPING_COST_CENTS_PER_KG_PER_KM;
-
-    if (costString === undefined) {
-        // This error will be thrown when the module is loaded if the variable is not set,
-        // causing the application to fail fast, which is desirable for missing critical configuration.
-        throw new Error(
-            "Configuration Error: The SHIPPING_COST_CENTS_PER_KG_PER_KM environment variable is not set."
-        );
-    }
-
-    const cost = parseInt(costString, 10);
-
-    if (isNaN(cost) || cost < 0) {
-        throw new Error(
-            "Configuration Error: The SHIPPING_COST_CENTS_PER_KG_PER_KM environment variable must be a non-negative integer."
-        );
-    }
-    return cost;
-}
-
-// This constant will hold the validated configuration value.
-// If getShippingCostCentsPerKgPerKmFromEnv() throws, the module loading will fail.
-const SHIPPING_COST_CENTS_PER_KG_PER_KM: number = getShippingCostCentsPerKgPerKmFromEnv();
+import config from '../config';
 
 /**
  * Represents the shipping information for a single warehouse.
@@ -109,7 +73,7 @@ export async function getWarehousesSortedByShippingCost(
         );
 
         // Calculate cost: distance (km) * cost_rate (cents/kg/km) = total_cost (cents/kg)
-        const costPerKg = distanceKm * SHIPPING_COST_CENTS_PER_KG_PER_KM;
+        const costPerKg = distanceKm * config.SHIPPING_COST_CENTS_PER_KG_PER_KM;
 
         // Round to the nearest whole cent, as shipping costs are typically integer cents.
         // Example: 123.45 cents becomes 123 cents, 123.78 cents becomes 124 cents.

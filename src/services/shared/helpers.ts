@@ -3,6 +3,7 @@ import * as warehouseRepository from '../../repositories/warehouseRepository';
 import * as inventoryRepository from '../../repositories/inventoryRepository';
 import * as reservationRepository from '../../repositories/reservationRepository';
 import * as orderRepository from "../../repositories/orderRepository";
+import config from '../../config';
 
 /**
  * Internal error type thrown by performInventoryAllocation if requested quantity cannot be met.
@@ -140,7 +141,7 @@ export function isShippingCostValid(
     if (overallDiscountedTotalPriceCents <= 0) {
         return totalShippingCostCents === 0; // Only valid if shipping is also zero
     }
-    const maxAllowedShippingCost = Math.floor(0.15 * overallDiscountedTotalPriceCents);
+    const maxAllowedShippingCost = Math.floor((config.SHIPPING_COST_MAX_PERCENTAGE_OF_ORDER_VALUE / 100) * overallDiscountedTotalPriceCents);
     return totalShippingCostCents <= maxAllowedShippingCost;
 }
 

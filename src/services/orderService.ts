@@ -67,7 +67,7 @@ export async function createWalkInOrder(
 
         if (!isShippingCostValid(totalShippingCostCents, overallTotalPriceCents, overallTotalDiscountCents)) {
             throw new ShippingCostExceededError(
-                `Shipping cost (${totalShippingCostCents} cents) exceeds 15% of discounted order value (${overallTotalPriceCents - overallTotalDiscountCents} cents).`
+                `Shipping cost (${totalShippingCostCents} cents) exceeds the allowed percentage of discounted order value (${overallTotalPriceCents - overallTotalDiscountCents} cents).`
             );
         }
 

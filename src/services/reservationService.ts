@@ -96,7 +96,7 @@ export async function checkFeasibility(
                 totalPriceCents: overallTotalPriceCents,
                 discountCents: overallTotalDiscountCents,
                 shippingCostCents: totalShippingCostCents,
-                message: `Reservation not feasible: Shipping cost (${totalShippingCostCents} cents) exceeds 15% of discounted order value (${overallTotalPriceCents - overallTotalDiscountCents} cents).`,
+                message: `Reservation not feasible: Shipping cost (${totalShippingCostCents} cents) exceeds the allowed percentage of discounted order value (${overallTotalPriceCents - overallTotalDiscountCents} cents).`,
             };
         }
 

@@ -1,5 +1,5 @@
+import config from "./config";
 import express from "express";
-import dotenv from "dotenv";
 import ordersRouter from "./routes/orders";
 import reservationsRouter from "./routes/reservations";
 import productsRouter from "./routes/products"; // Added import
@@ -8,20 +8,8 @@ import fs from "fs";
 import path from "path";
 import { ApiError, ZodValidationError } from './errors/customErrors';
 
-dotenv.config(); // Load environment variables once at the beginning
-
 const app = express();
-const portEnv = process.env.PORT;
-// Initialize PORT with a default, then try to parse.
-let PORT = 3002;
-if (portEnv) {
-    const parsedPort = parseInt(portEnv, 10);
-    if (!isNaN(parsedPort)) {
-        PORT = parsedPort;
-    } else {
-        console.warn(`Invalid PORT environment variable: '${portEnv}'. Using default ${PORT}.`);
-    }
-}
+const PORT = config.PORT;
 
 const openapiPath = path.join(__dirname, "../openapi/openapi.json");
 const openapiDocument = JSON.parse(fs.readFileSync(openapiPath, "utf8"));

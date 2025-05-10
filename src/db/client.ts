@@ -3,13 +3,11 @@ import { drizzle, NodePgDatabase, NodePgQueryResultHKT } from "drizzle-orm/node-
 import type { NodePgTransaction } from 'drizzle-orm/node-postgres';
 import type { ExtractTablesWithRelations } from 'drizzle-orm/relations';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
-import dotenv from "dotenv";
 import * as schema from "./schema";
-
-dotenv.config();
+import config from '../config';
 
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: config.DATABASE_URL,
 });
 
 // Initialize Drizzle with the schema for schema-aware client and transactions
