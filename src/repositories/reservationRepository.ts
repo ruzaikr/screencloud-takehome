@@ -5,8 +5,6 @@ import { and, eq, gt, inArray, sum, sql } from 'drizzle-orm';
 /**
  * Defines the structure for reserved inventory information, mapping warehouse IDs
  * to an object that maps product IDs to their total reserved quantity.
- * The `warehouseId` and `productId` in the index signatures are illustrative names
- * for the keys.
  *
  * @example
  * {

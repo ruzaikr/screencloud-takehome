@@ -72,7 +72,6 @@ export async function getWarehousesSortedByShippingCost(
             shippingAddrLongitude
         );
 
-        // Calculate cost: distance (km) * cost_rate (cents/kg/km) = total_cost (cents/kg)
         const costPerKg = distanceKm * config.SHIPPING_COST_CENTS_PER_KG_PER_KM;
 
         // Round to the nearest whole cent, as shipping costs are typically integer cents.
@@ -86,7 +85,6 @@ export async function getWarehousesSortedByShippingCost(
     });
 
     // 3. Sort the array by shippingCostCentsPerKg in ascending order
-    // The sort compareFunction handles numbers correctly.
     warehousesWithCosts.sort((a, b) => a.shippingCostCentsPerKg - b.shippingCostCentsPerKg);
 
     return warehousesWithCosts;
