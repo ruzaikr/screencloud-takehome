@@ -6,9 +6,16 @@
     "lint": "eslint ./src --ext .ts",
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "db:migrate": "drizzle-kit migrate --config drizzle.config.ts",
-    "db:seed": "ts-node-dev --transpile-only db/seed.js",
+    "db:seed": "ts-node-dev --transpile-only src/db/seed.ts",
     "db:seed:prod": "node dist/db/seed.js",
-    "test": "jest"
+    "test": "jest",
+
+    "docker:dev:up": "docker-compose -f docker-compose.dev.yml up -d --build",
+    "docker:dev:down": "docker-compose -f docker-compose.dev.yml down",
+    "docker:dev:logs": "docker-compose -f docker-compose.dev.yml logs -f api",
+    "docker:dev:db:migrate": "docker-compose -f docker-compose.dev.yml exec api npm run db:migrate",
+    "docker:dev:db:seed": "docker-compose -f docker-compose.dev.yml exec api npm run db:seed:prod",
+    "docker:dev:db:shell": "docker-compose -f docker-compose.dev.yml exec db psql -U docker_user -d docker_db"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.1",

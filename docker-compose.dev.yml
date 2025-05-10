@@ -1,0 +1,57 @@
+version: '3.8' # Specify compose file version
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: my_postgres_db_dev # Suffix with _dev
+    restart: always
+    environment:
+      POSTGRES_USER: docker_user
+      POSTGRES_PASSWORD: docker_password
+      POSTGRES_DB: docker_db
+    ports:
+      - "5432:5432" # Expose to host for direct DB access if needed
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data # Suffix volume with _dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docker_user -d docker_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile # Uses the main, now simplified, Dockerfile
+    container_name: my_api_dev # Suffix with _dev
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      # This DATABASE_URL points to the 'db' service within Docker's network
+      DATABASE_URL: postgresql://docker_user:docker_password@db:5432/docker_db?sslmode=disable
+      PORT: 3002
+      NODE_ENV: development # Explicitly set for development
+      # For potential use by pg_isready if scripts inside container need it (drizzle uses DATABASE_URL)
+      PG_HOST: db
+      PG_PORT: 5432
+      PG_USER: docker_user
+      PG_DATABASE: docker_db
+      # Load other environment variables from your host's .env file or use defaults
+      RESERVATION_TTL_MINUTES: ${RESERVATION_TTL_MINUTES:-10}
+      SHIPPING_COST_CENTS_PER_KG_PER_KM: ${SHIPPING_COST_CENTS_PER_KG_PER_KM:-1}
+      SHIPPING_COST_MAX_PERCENTAGE_OF_ORDER_VALUE: ${SHIPPING_COST_MAX_PERCENTAGE_OF_ORDER_VALUE:-15}
+    depends_on:
+      db:
+        condition: service_healthy # Wait for the DB to be healthy before starting API
+    # The API will start using CMD ["npm", "start"] from the Dockerfile.
+    # If you want hot-reloading for development (e.g., with ts-node-dev):
+    # command: npm run dev
+    # volumes:
+    #   - ./src:/usr/src/app/src # Mount your source code
+    #   - ./tsconfig.json:/usr/src/app/tsconfig.json
+    #   # Note: package.json changes would require a rebuild unless also mounted
+    #   # and node_modules handled carefully (often best to let container manage them)
+
+volumes:
+  pgdata_dev: # Defines the named volume for PostgreSQL data persistence in dev

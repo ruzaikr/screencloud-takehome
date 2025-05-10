@@ -6,4 +6,3 @@ pgdata
 .git
 .github
 .idea
-src/config/index.ts
