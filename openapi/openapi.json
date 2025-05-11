@@ -1,7 +1,7 @@
 {
     "openapi": "3.0.3",
     "info": {
-        "title": "E-commerce API",
+        "title": "SC Order Management System API",
         "version": "1.0.0",
         "description": "API for managing products, inventory, warehouses, orders, and reservations."
     },
