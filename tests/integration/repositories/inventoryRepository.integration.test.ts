@@ -114,7 +114,7 @@ describe('Inventory Repository Integration Tests', () => {
                 db.transaction(async (tx) => {
                     await inventoryRepo.updateInventoryAndLogChanges(tx, updates, orderId);
                 })
-            ).rejects.toThrowError(/Failed to update inventory for product .* This could be due to insufficient inventory/);
+            ).rejects.toThrowError(/Failed to update inventory for product .* This could be due to insufficient inventory/); // @todo: use toBeInstanceOf and compare with custom error
 
             expect(await getInventoryQuantity(product1Id, warehouse1Id)).toBe(100); // Unchanged
             expect(await getInventoryLogCount(orderId)).toBe(0); // No logs
@@ -131,7 +131,7 @@ describe('Inventory Repository Integration Tests', () => {
                 db.transaction(async (tx) => {
                     await inventoryRepo.updateInventoryAndLogChanges(tx, updates, orderId);
                 })
-            ).rejects.toThrowError(/Failed to update inventory for product 123e4567-e89b-12d3-a456-426614174010/);
+            ).rejects.toThrowError(/Failed to update inventory for product 123e4567-e89b-12d3-a456-426614174010/); // @todo: use toBeInstanceOf and compare with custom error
             expect(await getInventoryLogCount(orderId)).toBe(0);
         });
 

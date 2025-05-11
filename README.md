@@ -171,3 +171,8 @@ A ready‑made **`.env.example`** is included.
 8. **Observability** – structured JSON logs + OpenTelemetry traces; Prometheus metrics on allocation failures, shipping cost breaches.
 
 ---
+
+## Known Issues
+
+* Integration tests complete successfully, but Jest surfaces a benign `ERR_UNHANDLED_ERROR (57P01)` when the PostgreSQL Testcontainer shuts down during global teardown. This noise can be safely ignored (or filtered out) while we work on a cleaner shutdown hook.
+* Inventory Repository integration test still asserts on a literal error string. Introduce a purpose-built `InventoryAllocationError` (or reuse an existing domain error) and update the test to `expect(...).rejects.toThrow(InventoryAllocationError)` instead of regex-matching the message.
