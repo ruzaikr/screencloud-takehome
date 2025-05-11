@@ -13,14 +13,11 @@ module.exports = async () => {
         .start();
 
     process.env.DATABASE_URL = container.getConnectionUri();
-    // Drizzle Kit needs these explicitly for some environments or if connection string isn't fully parsed by it.
-    // However, a full URL should be sufficient.
-    // process.env.PGHOST = container.getHost();
-    // process.env.PGPORT = container.getMappedPort(5432).toString();
-    // process.env.PGUSER = container.getUsername();
-    // process.env.PGPASSWORD = container.getPassword();
-    // process.env.PGDATABASE = container.getDatabase();
-
+    process.env.PORT = 1;
+    process.env.NODE_ENV = 'test';
+    process.env.RESERVATION_TTL_MINUTES ??= 10
+    process.env.SHIPPING_COST_CENTS_PER_KG_PER_KM ??= '1';
+    process.env.SHIPPING_COST_MAX_PERCENTAGE_OF_ORDER_VALUE ??= '15';
 
     console.log(`Testcontainer DATABASE_URL: ${process.env.DATABASE_URL}`);
     console.log("Running Drizzle migrations...");

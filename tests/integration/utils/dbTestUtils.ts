@@ -1,31 +1,6 @@
-import { db } from '../../../src/db/client'; // This will use the DATABASE_URL set by globalSetup
+import { db } from '../../../src/db/client';
 import * as schema from '../../../src/db/schema';
 import { sql, eq } from 'drizzle-orm';
-
-// Order of tables for truncation matters due to foreign key constraints.
-// Start with tables that are referenced by others, or use CASCADE.
-const tablesToTruncate = [
-    // Tables that are referenced by others (FK targets) or have no FKs to tables below
-    // These might be okay to truncate first if using CASCADE or if order is managed carefully
-
-    // Tables that reference others (delete from these first)
-    schema.inventoryLog,
-    schema.orderLines,
-    schema.reservationLines,
-
-    // Then tables they reference (if not already handled by cascade or earlier truncation)
-    schema.orders,
-    schema.reservations,
-
-    // Then inventory, volume discounts
-    schema.inventory,
-    schema.volumeDiscounts,
-
-    // Finally, products and warehouses
-    schema.products,
-    schema.warehouses,
-];
-
 
 export async function resetDatabase(): Promise<void> {
     // Simpler approach: Truncate with CASCADE, let PostgreSQL handle the order.
@@ -53,9 +28,6 @@ export async function resetDatabase(): Promise<void> {
     }
 }
 
-
-// Example Seeding Helpers (add more as needed)
-
 export async function seedProduct(productData: typeof schema.products.$inferInsert) {
     return db.insert(schema.products).values(productData).returning();
 }
@@ -71,9 +43,6 @@ export async function seedInventory(inventoryData: typeof schema.inventory.$infe
 export async function seedVolumeDiscount(discountData: typeof schema.volumeDiscounts.$inferInsert) {
     return db.insert(schema.volumeDiscounts).values(discountData).returning();
 }
-
-
-// Example Query Helpers for Assertions
 
 export async function getInventoryQuantity(productId: string, warehouseId: string): Promise<number | null> {
     const result = await db.select({ quantity: schema.inventory.quantity })
@@ -120,5 +89,3 @@ export async function findOrderById(orderId: string) {
 export async function findInventoryLogByRefId(refId: string) {
     return db.query.inventoryLog.findMany({ where: eq(schema.inventoryLog.referenceId, refId) });
 }
-
-// ... you might add more specific helpers ...

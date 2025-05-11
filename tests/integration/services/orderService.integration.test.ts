@@ -1,3 +1,4 @@
+import * as orderService from '../../../src/services/orderService'
 import { CreateOrderRequest } from '../../../src/schemas/order';
 import * as schema from '../../../src/db/schema';
 import {
@@ -12,8 +13,6 @@ import {
     findInventoryLogByRefId
 } from '../utils/dbTestUtils';
 import { InsufficientInventoryError, ProductNotFoundError, ShippingCostExceededError } from '../../../src/errors/customErrors';
-
-const DATABASE_URL_FROM_GLOBAL_SETUP = process.env.DATABASE_URL;
 
 // Mock uuid
 jest.mock('uuid', () => ({
@@ -30,12 +29,6 @@ describe('Order Service Integration Tests - createWalkInOrder', () => {
     const MOCK_ORDER_ID = 'a1b2c3d4-e5f6-7890-1234-567890abcdef';
 
     beforeEach(async () => {
-        // Default environment setup for config
-        process.env.DATABASE_URL = DATABASE_URL_FROM_GLOBAL_SETUP;
-        process.env.RESERVATION_TTL_MINUTES = '10';
-        process.env.SHIPPING_COST_CENTS_PER_KG_PER_KM = '1'; // 1 cent per kg per km
-        process.env.SHIPPING_COST_MAX_PERCENTAGE_OF_ORDER_VALUE = '15'; // 15%
-
         mockUuidv4.mockReturnValue(MOCK_ORDER_ID);
 
         // Seed common data
@@ -54,8 +47,6 @@ describe('Order Service Integration Tests - createWalkInOrder', () => {
     });
 
     afterEach(() => {
-        delete process.env.SHIPPING_COST_CENTS_PER_KG_PER_KM;
-        delete process.env.SHIPPING_COST_MAX_PERCENTAGE_OF_ORDER_VALUE;
         mockUuidv4.mockClear();
     });
 
@@ -65,8 +56,6 @@ describe('Order Service Integration Tests - createWalkInOrder', () => {
     };
 
     it('should successfully create an order, update inventory, and log changes', async () => {
-        const orderService = require('../../../src/services/orderService');
-
         // NY to Chicago is approx 1145.036 km. -> shippingCostCentsPerKg = Math.round(1145.036 * 1) = 1145 cents/kg
         // Warehouse 2 (NY) should be preferred for shipping cost if inventory allows.
         // Product1: 5kg. CostPerKg for WH2 (NY) = 1145 cents/kg
@@ -124,8 +113,6 @@ describe('Order Service Integration Tests - createWalkInOrder', () => {
     });
 
     it('should throw InsufficientInventoryError if stock is too low', async () => {
-        const orderService = require('../../../src/services/orderService');
-
         const request: CreateOrderRequest = {
             shippingAddress: customerShippingAddress,
             requestedProducts: [
@@ -144,8 +131,6 @@ describe('Order Service Integration Tests - createWalkInOrder', () => {
     });
 
     it('should throw ShippingCostExceededError if shipping costs are too high', async () => {
-        const orderService = require('../../../src/services/orderService');
-
         const request: CreateOrderRequest = {
             shippingAddress: customerShippingAddress, // Chicago
             requestedProducts: [
@@ -167,18 +152,6 @@ describe('Order Service Integration Tests - createWalkInOrder', () => {
     });
 
     it('should throw ProductNotFoundError if a product ID is invalid', async () => {
-        const orderService = require('../../../src/services/orderService');
-
-        const request: CreateOrderRequest = {
-            shippingAddress: customerShippingAddress,
-            requestedProducts: [
-                { productId: 'invalid-product-id-format', quantity: 1 }, // Invalid format
-            ],
-        };
-        // This error comes from productRepository.calculateProductCostsWithDiscounts if ID not found.
-        // If the ID format is invalid for UUID, Zod would catch it at route level (not tested here).
-        // This tests if product repo throws if UUID is valid but product doesn't exist.
-
         // For this to be caught by ProductNotFoundError, the UUID must be valid format but not exist.
         const nonExistentValidUuid = '123e4567-e89b-12d3-a456-426614174000';
         const requestWithNonExistentProduct: CreateOrderRequest = {

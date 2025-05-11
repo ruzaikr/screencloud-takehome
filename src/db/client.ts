@@ -27,3 +27,7 @@ export type AppTransactionExecutor = NodePgTransaction<
  * or a transaction, suitable for read operations.
  */
 export type DatabaseExecutor = PgDatabase<NodePgQueryResultHKT, typeof schema>;
+
+export async function closeDb() {
+    await pool.end(); // drains & closes every client
+}

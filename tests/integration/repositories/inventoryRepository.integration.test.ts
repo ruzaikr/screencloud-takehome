@@ -40,7 +40,8 @@ describe('Inventory Repository Integration Tests', () => {
 
         it('should return empty object if no products match or productIds array is empty', async () => {
             await db.transaction(async (tx) => {
-                const inventory1 = await inventoryRepo.getInventoryForProducts(tx, ['non-existent-id']);
+                const nonExistentValidUuid = '123e4567-e89b-12d3-a456-426614174000';
+                const inventory1 = await inventoryRepo.getInventoryForProducts(tx, [nonExistentValidUuid]);
                 expect(inventory1).toEqual({});
 
                 const inventory2 = await inventoryRepo.getInventoryForProducts(tx, []);
@@ -121,15 +122,16 @@ describe('Inventory Repository Integration Tests', () => {
 
         it('should throw an error if attempting to update non-existent product/warehouse inventory', async () => {
             const orderId = 'test-order-nonexistent';
+            const nonExistentProductId = '123e4567-e89b-12d3-a456-426614174010';
             const updates: inventoryRepo.InventoryUpdateItem[] = [
-                { productId: 'non-existent-product', warehouseId: warehouse1Id, quantityToDecrement: 1 },
+                { productId: nonExistentProductId, warehouseId: warehouse1Id, quantityToDecrement: 1 },
             ];
 
             await expect(
                 db.transaction(async (tx) => {
                     await inventoryRepo.updateInventoryAndLogChanges(tx, updates, orderId);
                 })
-            ).rejects.toThrowError(/Failed to update inventory for product non-existent-product/);
+            ).rejects.toThrowError(/Failed to update inventory for product 123e4567-e89b-12d3-a456-426614174010/);
             expect(await getInventoryLogCount(orderId)).toBe(0);
         });
 

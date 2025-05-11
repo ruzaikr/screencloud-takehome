@@ -5,8 +5,3 @@ import { resetDatabase } from './utils/dbTestUtils';
 beforeEach(async () => {
     await resetDatabase();
 });
-
-// Optional: if you want to reset modules for config changes often.
-// beforeEach(() => {
-//   jest.resetModules();
-// });

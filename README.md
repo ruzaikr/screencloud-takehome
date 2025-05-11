@@ -18,14 +18,6 @@ A **TypeScript + Express** backend that lets ScreenCloud’s sales team price‑
 
 ---
 
-## Domain model (high‑level)
-
-TODO
-
-(See `src/db/schema.ts` for the full schema, enums and constraints.)
-
----
-
 ## Quick start (Recommended)
 
 > **Prerequisites:** Docker 20+, Docker Compose v2.
@@ -67,14 +59,12 @@ npm run docker:dev:down
 
 ## Running tests
 
-| Command                    | What it runs                                                                |
-| -------------------------- |-----------------------------------------------------------------------------|
-| `npm test`                 | All Jest projects (unit + integration).                                     |
-| `npm run test:integration` | Integration suite only - spins up a disposable Postgres via Testcontainers. |
+| Command                    | What it runs                                                              |
+|----------------------------|---------------------------------------------------------------------------|
+| `npm run test:unit`        | Unit suite only.                                                          |
+| `npm run test:integration` | Integration suite only - spins up disposable Postgres via Testcontainers. |
 
 > **Note** Integration tests require Docker locally **or** CI with privileged containers.
-
-Coverage reports land in `coverage/` (lcov + text).
 
 ---
 
