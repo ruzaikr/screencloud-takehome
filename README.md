@@ -77,8 +77,8 @@ npm run docker:dev:down
    cd <directory>
    npm ci
    ```
-2. **Postgres** – start a local 15‑alpine instance (Docker or native) and create a database, e.g. `oms_db`.
-3. **Environment** – copy and edit the template:
+2. **Postgres** - start a local 15‑alpine instance (Docker or native) and create a database, e.g. `oms_db`.
+3. **Environment** - copy and edit the template:
 
    ```bash
    cp .env.example .env
@@ -148,9 +148,9 @@ A ready‑made **`.env.example`** is included.
 ## Design highlights
 
 * **Thin Express routers → services → repositories** keeps HTTP glue separate from domain & persistence.
-* **Single‑source schema** – Drizzle schema feeds runtime types, migrations and seed data.
-* **Inventory allocation algorithm** – picks cheapest shipping warehouses first while respecting stock & reservations, then computes shipping cost and validates upper bound.
-* **Transaction‑safe order placement** – entire flow wrapped in `db.transaction`, inventory rows `FOR UPDATE`‑locked, ensuring no double‑allocate race.
+* **Single‑source schema** - Drizzle schema feeds runtime types, migrations and seed data.
+* **Inventory allocation algorithm** - picks cheapest shipping warehouses first while respecting stock & reservations, then computes shipping cost and validates upper bound.
+* **Transaction‑safe order placement** - entire flow wrapped in `db.transaction`, inventory rows `FOR UPDATE`‑locked, ensuring no double‑allocate race.
 
 ---
 
@@ -162,19 +162,19 @@ See [testing-strategy.md]()
 
 ## Next steps (given more time)
 
-1. Extend the `POST /reservations` endpoint to hold inventory for a specific period of time.
+1. **Extend** the `POST /reservations` endpoint to hold inventory for a specific period of time.
 2. **Add endpoints** for the following:
    1. Release a reservation: `PATCH /reservations/:id`.
    2. Re-stock/adjust inventory of a product in a warehouse.
    3. Create/Read/Update/Delete warehouses.
    4. Create/Read/Update/Delete products.
    5. Manage volume discounts for products.
-3. Multiple currency support
-4. Retry mechanisms for when an operation like submitting an order fails due to a race condition.
+3. Multiple **currency** support
+4. **Retry** mechanisms for when an operation like submitting an order fails due to a race condition.
 5. **E2E Tests**
-6. **Authentication & RBAC** – JWT for sales reps vs admin; audit trails.
-7. **CI/CD** – GitHub Actions pipeline ➜ push triggers lint + test + docker build + deploy.
-8. **Observability** – structured JSON logs + OpenTelemetry traces; Prometheus metrics on allocation failures, shipping cost breaches.
+6. **Authentication & RBAC** - JWT for sales reps vs admin; audit trails.
+7. **CI/CD** - GitHub Actions pipeline ➜ push triggers lint + test + docker build + deploy.
+8. **Observability** - structured JSON logs + OpenTelemetry traces; Prometheus metrics on allocation failures, shipping cost breaches.
 
 ---
 
