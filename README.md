@@ -154,6 +154,12 @@ A ready‑made **`.env.example`** is included.
 
 ---
 
+## Testing Strategy
+
+See [testing-strategy.md]()
+
+---
+
 ## Next steps (given more time)
 
 1. Extend the `POST /reservations` endpoint to hold inventory for a specific period of time.
