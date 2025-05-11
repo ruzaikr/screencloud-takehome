@@ -52,19 +52,6 @@ export async function getWarehousesSortedByShippingCost(
         const warehouseLatitude = parseFloat(warehouse.latitude);
         const warehouseLongitude = parseFloat(warehouse.longitude);
 
-        // Validate parsed coordinates.
-        // Database constraints (NOT NULL, numeric type) should prevent malformed data,
-        // but robust code includes checks for unexpected scenarios.
-        if (isNaN(warehouseLatitude) || isNaN(warehouseLongitude)) {
-            // This indicates a data integrity issue or an unexpected format from the DB.
-            console.error(
-                `Warehouse ID ${warehouse.id} (Name: '${warehouse.name}') has invalid coordinates: latitude='${warehouse.latitude}', longitude='${warehouse.longitude}'.`
-            );
-            // Throw an error to halt the process and flag the data issue.
-            // Alternatively, this warehouse could be skipped, but failing fast is often safer.
-            throw new Error(`Invalid coordinates for warehouse ID ${warehouse.id} ('${warehouse.name}').`);
-        }
-
         const distanceKm = calculateDistanceKm(
             warehouseLatitude,
             warehouseLongitude,
