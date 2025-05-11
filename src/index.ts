@@ -2,7 +2,7 @@ import config from "./config";
 import express from "express";
 import ordersRouter from "./routes/orders";
 import reservationsRouter from "./routes/reservations";
-import productsRouter from "./routes/products"; // Added import
+import productsRouter from "./routes/products";
 import swaggerUi from "swagger-ui-express";
 import fs from "fs";
 import path from "path";
