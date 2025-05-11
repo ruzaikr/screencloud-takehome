@@ -7,7 +7,7 @@ COPY package.json ./
 COPY package-lock.json ./
 
 # Install ALL dependencies (including dev) needed for building and potentially for running migration tools later
-RUN npm install
+RUN npm ci
 
 COPY . .
 
@@ -21,7 +21,7 @@ WORKDIR /usr/src/app
 COPY package.json ./
 COPY package-lock.json ./
 
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 
 COPY --from=builder /usr/src/app/dist ./dist
 COPY --from=builder /usr/src/app/openapi ./openapi
