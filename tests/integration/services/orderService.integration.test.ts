@@ -1,4 +1,3 @@
-import * as orderService from '../../../src/services/orderService';
 import { CreateOrderRequest } from '../../../src/schemas/order';
 import * as schema from '../../../src/db/schema';
 import {
@@ -13,6 +12,8 @@ import {
     findInventoryLogByRefId
 } from '../utils/dbTestUtils';
 import { InsufficientInventoryError, ProductNotFoundError, ShippingCostExceededError } from '../../../src/errors/customErrors';
+
+const DATABASE_URL_FROM_GLOBAL_SETUP = process.env.DATABASE_URL;
 
 // Mock uuid
 jest.mock('uuid', () => ({
@@ -29,11 +30,8 @@ describe('Order Service Integration Tests - createWalkInOrder', () => {
     const MOCK_ORDER_ID = 'a1b2c3d4-e5f6-7890-1234-567890abcdef';
 
     beforeEach(async () => {
-        jest.resetModules(); // Important to re-evaluate config if process.env changes
-
         // Default environment setup for config
-        process.env.PORT = '3002';
-        process.env.DATABASE_URL = process.env.DATABASE_URL; // Keep from globalSetup
+        process.env.DATABASE_URL = DATABASE_URL_FROM_GLOBAL_SETUP;
         process.env.RESERVATION_TTL_MINUTES = '10';
         process.env.SHIPPING_COST_CENTS_PER_KG_PER_KM = '1'; // 1 cent per kg per km
         process.env.SHIPPING_COST_MAX_PERCENTAGE_OF_ORDER_VALUE = '15'; // 15%
@@ -56,8 +54,9 @@ describe('Order Service Integration Tests - createWalkInOrder', () => {
     });
 
     afterEach(() => {
+        delete process.env.SHIPPING_COST_CENTS_PER_KG_PER_KM;
+        delete process.env.SHIPPING_COST_MAX_PERCENTAGE_OF_ORDER_VALUE;
         mockUuidv4.mockClear();
-        // Clean up any specific env vars set during tests if necessary, though resetModules handles config load.
     });
 
     const customerShippingAddress = { // Approx. Chicago
@@ -66,6 +65,8 @@ describe('Order Service Integration Tests - createWalkInOrder', () => {
     };
 
     it('should successfully create an order, update inventory, and log changes', async () => {
+        const orderService = require('../../../src/services/orderService');
+
         // NY to Chicago is approx 1145.036 km. -> shippingCostCentsPerKg = Math.round(1145.036 * 1) = 1145 cents/kg
         // Warehouse 2 (NY) should be preferred for shipping cost if inventory allows.
         // Product1: 5kg. CostPerKg for WH2 (NY) = 1145 cents/kg
@@ -123,6 +124,8 @@ describe('Order Service Integration Tests - createWalkInOrder', () => {
     });
 
     it('should throw InsufficientInventoryError if stock is too low', async () => {
+        const orderService = require('../../../src/services/orderService');
+
         const request: CreateOrderRequest = {
             shippingAddress: customerShippingAddress,
             requestedProducts: [
@@ -141,24 +144,19 @@ describe('Order Service Integration Tests - createWalkInOrder', () => {
     });
 
     it('should throw ShippingCostExceededError if shipping costs are too high', async () => {
-        jest.resetModules(); // Reset modules to re-import config with new env vars
-        process.env.SHIPPING_COST_MAX_PERCENTAGE_OF_ORDER_VALUE = '1'; // Set to 1% (very low)
-        // Re-require or re-import orderService if config is deeply embedded.
-        // The service itself imports config.
-        const orderServiceWithNewConfig = require('../../../src/services/orderService');
-
+        const orderService = require('../../../src/services/orderService');
 
         const request: CreateOrderRequest = {
             shippingAddress: customerShippingAddress, // Chicago
             requestedProducts: [
-                // Request 1 TV. Cost 100000. Discount 0. Max shipping = 1% of 100000 = 1000 cents.
-                // Shipping from WH2 (NY) to Chicago: 1 TV * 5kg * 1150c/kg = 5750 cents.
-                // 5750 > 1000, so should fail.
-                { productId: product1.id, quantity: 1 },
+                // Request 99 Basic Radio. Cost 198000. Discount 0. Max shipping = 15% of 198000 = 29700 cents.
+                // Shipping from WH1 (LA) to Chicago: 1 TV * 49.5kg * 2804c/kg = 138798 cents.
+                // 138798 > 29700, so should fail.
+                { productId: product2.id, quantity: 99 },
             ],
         };
 
-        await expect(orderServiceWithNewConfig.createWalkInOrder(request))
+        await expect(orderService.createWalkInOrder(request))
             .rejects.toThrow(ShippingCostExceededError);
 
         // Verify no order created
@@ -169,6 +167,8 @@ describe('Order Service Integration Tests - createWalkInOrder', () => {
     });
 
     it('should throw ProductNotFoundError if a product ID is invalid', async () => {
+        const orderService = require('../../../src/services/orderService');
+
         const request: CreateOrderRequest = {
             shippingAddress: customerShippingAddress,
             requestedProducts: [
@@ -196,6 +196,8 @@ describe('Order Service Integration Tests - createWalkInOrder', () => {
 
 
     it('should handle transaction rollback on error during inventory update', async () => {
+        jest.resetModules();
+
         // This test ensures that if an error occurs *after some operations but before commit*,
         // the whole transaction is rolled back.
         // We can mock a repository function called late in the process to throw an error.
@@ -220,12 +222,14 @@ describe('Order Service Integration Tests - createWalkInOrder', () => {
             throw new Error("Simulated DB error during inventory update");
         });
 
+        const orderServiceForRollbackTest = require('../../../src/services/orderService');
+
         const request: CreateOrderRequest = {
             shippingAddress: customerShippingAddress,
             requestedProducts: [{ productId: product1.id, quantity: 1 }],
         };
 
-        await expect(orderService.createWalkInOrder(request))
+        await expect(orderServiceForRollbackTest.createWalkInOrder(request))
             .rejects.toThrow("Simulated DB error during inventory update");
 
         // Verify DB state is rolled back

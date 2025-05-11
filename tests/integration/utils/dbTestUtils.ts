@@ -1,7 +1,6 @@
-// tests/integration/utils/dbTestUtils.ts
 import { db } from '../../../src/db/client'; // This will use the DATABASE_URL set by globalSetup
 import * as schema from '../../../src/db/schema';
-import { sql } from 'drizzle-orm';
+import { sql, eq } from 'drizzle-orm';
 
 // Order of tables for truncation matters due to foreign key constraints.
 // Start with tables that are referenced by others, or use CASCADE.
@@ -121,8 +120,5 @@ export async function findOrderById(orderId: string) {
 export async function findInventoryLogByRefId(refId: string) {
     return db.query.inventoryLog.findMany({ where: eq(schema.inventoryLog.referenceId, refId) });
 }
-
-// Import 'eq' if not already available
-import { eq } from 'drizzle-orm';
 
 // ... you might add more specific helpers ...

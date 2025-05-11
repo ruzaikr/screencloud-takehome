@@ -1,4 +1,3 @@
-// tests/integration/repositories/inventoryRepository.integration.test.ts
 import { db } from '../../../src/db/client';
 import * as inventoryRepo from '../../../src/repositories/inventoryRepository';
 import * as schema from '../../../src/db/schema';

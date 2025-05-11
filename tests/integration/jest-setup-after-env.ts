@@ -1,4 +1,3 @@
-// tests/integration/jest-setup-after-env.ts
 import { resetDatabase } from './utils/dbTestUtils';
 
 // This will run once before each test file that Jest discovers.

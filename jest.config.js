@@ -1,4 +1,3 @@
-// jest.config.js
 module.exports = {
     projects: [
         {
@@ -26,7 +25,6 @@ module.exports = {
                 // Exclude files that will be tested via integration tests if desired
                 // For now, keeping existing exclusions
             ],
-            coverageReporters: ["json", "lcov", "text", "clover"],
         },
         {
             displayName: 'integration',
@@ -41,8 +39,7 @@ module.exports = {
             transform: {
                 '^.+\\.(ts|tsx)$': 'ts-jest', // Ensure .ts files in tests/integration are transformed
             },
-            clearMocks: true, // Good practice
-            testTimeout: 60000, // Increase timeout for testcontainers setup and tests
+            clearMocks: true,
         }
     ],
     // Optional: A default coverage directory for when running all projects
