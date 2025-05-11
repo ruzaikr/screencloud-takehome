@@ -166,12 +166,18 @@ A ready‑made **`.env.example`** is included.
 
 ## Next steps (given more time)
 
-1. **Create / PATCH reservations** endpoint with expiry scheduler (cron or LISTEN/NOTIFY).
-2. **Bulk products & pricing** – multiple SKUs, different volume‑discount matrices.
-3. **Observability** – structured JSON logs + OpenTelemetry traces; Prometheus metrics on allocation failures, shipping cost breaches.
-4. **Authentication & RBAC** – JWT for sales reps vs admin; audit trails.
-5. **CI/CD** – GitHub Actions pipeline ➜ push triggers lint + test + docker build + deploy (e.g. to Fly.io or AWS ECS Fargate).
-6. **Horizontal scaling** – stateless API, use PgBouncer; eventually move inventory ops to event‑sourced microservice.
-7. **Front‑end demo** – React/Next.js quoting tool consuming the same OpenAPI.
+1. Extend the `POST /reservations` endpoint to hold inventory for a specific period of time.
+2. **Add endpoints** for the following:
+   1. Release a reservation: `PATCH /reservations/:id`.
+   2. Re-stock/adjust inventory of a product in a warehouse.
+   3. Create/Read/Update/Delete warehouses.
+   4. Create/Read/Update/Delete products.
+   5. Manage volume discounts for products.
+3. Multiple currency support
+4. Retry mechanisms for when an operation like submitting an order fails due to a race condition.
+5. **E2E Tests**
+6. **Authentication & RBAC** – JWT for sales reps vs admin; audit trails.
+7. **CI/CD** – GitHub Actions pipeline ➜ push triggers lint + test + docker build + deploy.
+8. **Observability** – structured JSON logs + OpenTelemetry traces; Prometheus metrics on allocation failures, shipping cost breaches.
 
 ---
