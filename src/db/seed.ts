@@ -4,7 +4,7 @@ import {
     volumeDiscounts,
     warehouses,
     inventory as inventoryTable,
-    orderLines,
+    orderLines, inventoryLog,
 } from "./schema";
 
 async function seed() {
@@ -13,15 +13,18 @@ async function seed() {
     // Truncate tables in an order that respects foreign key constraints
     // Delete from tables that reference other tables first.
 
-    console.log('Truncating orderLines table...');
+    console.log('Truncating order_lines table...');
     // Ensure 'orderLines' is the correct schema object for your 'order_lines' table
     await db.delete(orderLines);
 
-    console.log('Truncating volumeDiscounts table...');
+    console.log('Truncating volume_discounts table...');
     await db.delete(volumeDiscounts);
 
     console.log('Truncating inventory table...');
     await db.delete(inventoryTable);
+
+    console.log('Truncating inventory_log table...')
+    await db.delete(inventoryLog);
 
     // Now that tables referencing warehouses and products are cleared,
     // we can delete from warehouses and products.

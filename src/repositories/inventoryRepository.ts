@@ -150,7 +150,7 @@ export async function updateInventoryAndLogChanges(
             warehouseId: update.warehouseId,
             quantityChange: -update.quantityToDecrement, // Logged as negative for decrement
             newQuantity: newQuantity,
-            changeType: inventoryLogChangeTypeEnum.enumValues[0], // 'ORDER_FULFILLMENT'
+            changeType: inventoryLogChangeTypeEnum.enumValues[0], // 'ORDER_FULFILLMENT' @todo: Need a better way
             referenceId: orderId,
             createdAt: new Date(), // Drizzle sets defaultNow, but explicit for clarity
         });
