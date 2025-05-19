@@ -40,6 +40,7 @@
     "drizzle-kit": "^0.31.1",
     "drizzle-orm": "^0.43.1",
     "express": "^5.1.0",
+    "express-oauth2-jwt-bearer": "^1.6.1",
     "pg": "^8.15.6",
     "swagger-ui-express": "^5.0.1",
     "ts-node-dev": "^2.0.0",
