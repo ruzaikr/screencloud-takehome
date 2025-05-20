@@ -30,6 +30,8 @@ interface AppConfig {
     RESERVATION_TTL_MINUTES: number;
     SHIPPING_COST_CENTS_PER_KG_PER_KM: number;
     SHIPPING_COST_MAX_PERCENTAGE_OF_ORDER_VALUE: number;
+    AUTH0_DOMAIN: string;
+    AUTH0_AUDIENCE: string;
 }
 
 const config: AppConfig = {
@@ -39,6 +41,8 @@ const config: AppConfig = {
     RESERVATION_TTL_MINUTES: getNumericEnvVar('RESERVATION_TTL_MINUTES'),
     SHIPPING_COST_CENTS_PER_KG_PER_KM: getNumericEnvVar('SHIPPING_COST_CENTS_PER_KG_PER_KM'),
     SHIPPING_COST_MAX_PERCENTAGE_OF_ORDER_VALUE: getNumericEnvVar('SHIPPING_COST_MAX_PERCENTAGE_OF_ORDER_VALUE'),
+    AUTH0_DOMAIN: getEnvVar('AUTH0_DOMAIN'),
+    AUTH0_AUDIENCE: getEnvVar('AUTH0_AUDIENCE'),
 };
 
 if (config.RESERVATION_TTL_MINUTES <= 0) {
@@ -53,6 +57,13 @@ if (config.SHIPPING_COST_MAX_PERCENTAGE_OF_ORDER_VALUE < 0 || config.SHIPPING_CO
 if (config.PORT <= 0 || config.PORT > 65535) {
     throw new Error('PORT must be a valid port number (1-65535).');
 }
+if (!config.AUTH0_DOMAIN || config.AUTH0_DOMAIN.trim() === '') {
+    throw new Error('AUTH0_DOMAIN must be defined.');
+}
+if (!config.AUTH0_AUDIENCE || config.AUTH0_AUDIENCE.trim() === '') {
+    throw new Error('AUTH0_AUDIENCE must be defined.');
+}
+
 
 // Freeze the config object to prevent modifications at runtime
 export default Object.freeze(config);
