@@ -1,5 +1,5 @@
 # Stage 1: Build the application
-FROM node:20-slim AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /usr/src/app
 
@@ -14,7 +14,14 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Create the production-like image
-FROM node:20-slim
+FROM node:20-alpine
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates curl && \
+    curl -sSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
+         -o /usr/local/share/ca-certificates/aws-rds-ca.crt && \
+    update-ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/src/app
 
