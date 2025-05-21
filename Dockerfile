@@ -1,5 +1,7 @@
 # Stage 1: Build the application
-FROM node:20-slim AS builder
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023 AS builder
+RUN curl -sL https://rpm.nodesource.com/setup_20.x | bash - && \
+    dnf install -y nodejs npm git make gcc-c++ python3 && dnf clean all
 
 WORKDIR /usr/src/app
 
@@ -14,14 +16,9 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Create the production-like image
-FROM node:20-slim
-
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates curl && \
-    curl -sSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
-         -o /usr/local/share/ca-certificates/aws-rds-ca.crt && \
-    update-ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023
+RUN curl -sL https://rpm.nodesource.com/setup_20.x | bash - && \
+    dnf install -y nodejs npm && dnf clean all
 
 WORKDIR /usr/src/app
 
