@@ -11,6 +11,7 @@ import { checkJwt } from "./middleware/authMiddleware";
 
 const app = express();
 const PORT = config.PORT;
+const HOST = "0.0.0.0";
 
 const openapiPath = path.join(__dirname, "../openapi/openapi.json");
 const openapiDocument = JSON.parse(fs.readFileSync(openapiPath, "utf8"));
@@ -80,7 +81,7 @@ app.use((err: Error & { status?: number; statusCode?: number; code?: string; }, 
 });
 
 
-app.listen(PORT, () => {
+app.listen(PORT, HOST, () => {
     console.log(`Server listening on http://localhost:${PORT}`);
     console.log(`OpenAPI docs: http://localhost:${PORT}/docs`);
 });

@@ -1,0 +1,122 @@
+name: Deploy to Staging (AWS ECS)
+
+on:
+  push:
+    branches:
+      - staging
+
+env:
+  AWS_REGION: ap-southeast-1
+  ECR_REPOSITORY: screencloud-takehome-staging
+  ECS_CLUSTER_NAME: oms-staging-cluster
+  ECS_SERVICE_NAME: oms-app-staging-service-lvba3625
+  ECS_APP_TASK_DEFINITION_FAMILY: oms-app-staging
+  ECS_MIGRATION_TASK_DEFINITION_FAMILY: oms-db-migrations-staging
+  APP_CONTAINER_NAME: oms-app
+  MIGRATION_CONTAINER_NAME: oms-db-migrations
+
+jobs:
+  build-and-push:
+    name: Build, Push to ECR, Run Migrations, Deploy
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Required for OIDC
+      contents: read   # Required to checkout the code
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/GitHubActions-ScreenCloud-Role # ARN of the IAM role you created
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image_uri=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Download current migration task definition
+        id: download-migration-task-def
+        run: |
+          aws ecs describe-task-definition --task-definition ${{ env.ECS_MIGRATION_TASK_DEFINITION_FAMILY }} --query taskDefinition > migration-task-definition.json
+          echo "task_def_arn=$(jq -r .taskDefinitionArn migration-task-definition.json)" >> $GITHUB_OUTPUT
+
+
+      - name: Update migration task definition with new image and register
+        id: update-migration-task-def
+        run: |
+          cat migration-task-definition.json | \
+          jq '.containerDefinitions[0].image = "${{ steps.build-image.outputs.image_uri }}"' | \
+          jq 'del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.compatibilities) | del(.registeredAt) | del(.registeredBy) | del(.tags)' > updated-migration-task-definition.json
+
+          aws ecs register-task-definition --cli-input-json file://updated-migration-task-definition.json --query taskDefinition.taskDefinitionArn --output text > new-migration-task-def-arn.txt
+          echo "new_task_def_arn=$(cat new-migration-task-def-arn.txt)" >> $GITHUB_OUTPUT
+          echo "Registered new migration task definition: $(cat new-migration-task-def-arn.txt)"
+
+      - name: Run DB Migrations on ECS
+        id: run-migrations
+        env:
+          SUBNET_ID: YOUR_PUBLIC_SUBNET_ID # The public subnet ID where migrations can run (must have route to DB)
+          SECURITY_GROUP_ID: YOUR_ECS_SECURITY_GROUP_ID # The ECS security group ID
+        run: |
+          echo "Running migrations with task definition: ${{ steps.update-migration-task-def.outputs.new_task_def_arn }}"
+          MIGRATION_TASK_ARN=$(aws ecs run-task \
+            --cluster ${{ env.ECS_CLUSTER_NAME }} \
+            --task-definition ${{ steps.update-migration-task-def.outputs.new_task_def_arn }} \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_ID],securityGroups=[$SECURITY_GROUP_ID],assignPublicIp=ENABLED}" \
+            --query 'tasks[0].taskArn' --output text)
+
+          if [ -z "$MIGRATION_TASK_ARN" ]; then
+            echo "Failed to start migration task."
+            exit 1
+          fi
+          echo "Migration task started: $MIGRATION_TASK_ARN"
+
+          # Wait for the migration task to complete
+          echo "Waiting for migration task to complete..."
+          aws ecs wait tasks-stopped --cluster ${{ env.ECS_CLUSTER_NAME }} --tasks $MIGRATION_TASK_ARN
+
+          # Check the exit code of the migration container
+          MIGRATION_EXIT_CODE=$(aws ecs describe-tasks --cluster ${{ env.ECS_CLUSTER_NAME }} --tasks $MIGRATION_TASK_ARN --query "tasks[0].containers[?name=='${{ env.MIGRATION_CONTAINER_NAME }}'].exitCode | [0]" --output text)
+          echo "Migration task container exit code: $MIGRATION_EXIT_CODE"
+          if [ "$MIGRATION_EXIT_CODE" != "0" ]; then
+            echo "Migration task failed with exit code $MIGRATION_EXIT_CODE."
+            # You might want to fetch logs here:
+            # aws logs get-log-events --log-group-name /ecs/screencloud-migrations-staging --log-stream-name ecs/screencloud-migrations/TASK_ID_PART_OF_ARN --limit 50
+            exit 1
+          fi
+          echo "Migrations completed successfully."
+
+      - name: Download current app task definition
+        id: download-app-task-def
+        run: |
+          aws ecs describe-task-definition --task-definition ${{ env.ECS_APP_TASK_DEFINITION_FAMILY }} --query taskDefinition > app-task-definition.json
+
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: app-task-definition.json
+          container-name: ${{ env.APP_CONTAINER_NAME }}
+          image: ${{ steps.build-image.outputs.image_uri }}
+
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE_NAME }}
+          cluster: ${{ env.ECS_CLUSTER_NAME }}
+          wait-for-service-stability: true
