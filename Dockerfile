@@ -1,5 +1,5 @@
 # Stage 1: Build the application
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 
 WORKDIR /usr/src/app
 
@@ -14,7 +14,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Create the production-like image
-FROM node:20-alpine
+FROM node:20-slim
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates curl && \
