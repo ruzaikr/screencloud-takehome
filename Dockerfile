@@ -14,7 +14,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Create the production-like image
-FROM node:20-alpine
+FROM node:20-slim
 
 WORKDIR /usr/src/app
 
