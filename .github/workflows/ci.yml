@@ -30,7 +30,7 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/GitHubActions-ScreenCloud-Role # ARN of the IAM role you created
+          role-to-assume: arn:aws:iam::699498176916:role/GitHubAction-OmsStagingDeployRole
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
@@ -68,8 +68,8 @@ jobs:
       - name: Run DB Migrations on ECS
         id: run-migrations
         env:
-          SUBNET_ID: YOUR_PUBLIC_SUBNET_ID # The public subnet ID where migrations can run (must have route to DB)
-          SECURITY_GROUP_ID: YOUR_ECS_SECURITY_GROUP_ID # The ECS security group ID
+          SUBNET_ID: subnet-043799a1fff09b6f9
+          SECURITY_GROUP_ID: sg-09c6dd87cf7ce4b0d
         run: |
           echo "Running migrations with task definition: ${{ steps.update-migration-task-def.outputs.new_task_def_arn }}"
           MIGRATION_TASK_ARN=$(aws ecs run-task \
