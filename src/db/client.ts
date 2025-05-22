@@ -6,8 +6,13 @@ import type { PgDatabase } from 'drizzle-orm/pg-core';
 import * as schema from "./schema";
 import config from '../config';
 
+const connectionString =
+    process.env.NODE_ENV === "test"
+        ? config.DATABASE_URL!
+        : `${config.DATABASE_URL!}?sslmode=no-verify`;
+
 const pool = new Pool({
-    connectionString: `${config.DATABASE_URL!}?sslmode=no-verify`,
+    connectionString: connectionString,
 });
 
 // Initialize Drizzle with the schema for schema-aware client and transactions
