@@ -11,10 +11,6 @@ const connectionString =
         ? `${config.DATABASE_URL!}?sslmode=disable`
         : `${config.DATABASE_URL!}?sslmode=no-verify`;
 
-console.error(`node_env is ${config.NODE_ENV}`);
-console.error(`database url is ${config.DATABASE_URL}`);
-console.error(`connection string is ${connectionString}`);
-
 const pool = new Pool({
     connectionString: connectionString,
 });
