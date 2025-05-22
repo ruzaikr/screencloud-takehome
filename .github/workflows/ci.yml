@@ -15,19 +15,56 @@ env:
   APP_CONTAINER_NAME: oms-app
   MIGRATION_CONTAINER_NAME: oms-db-migrations
 
+###############################################################################
+# Job 1 – Run ESLint + Jest (unit & integration)
+###############################################################################
 jobs:
-  build-and-push:
-    name: Build, Push to ECR, Run Migrations, Deploy
+  lint-and-test:
     runs-on: ubuntu-latest
+    name: Lint & Test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20 with npm cache
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies (prod + dev)
+        run: npm ci
+
+      - name: Lint source
+        run: npm run lint
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Run integration tests
+        env:
+          # Testcontainers works on GitHub-hosted runners out of the box;
+          # these vars just keep Jest noise down.
+          TESTCONTAINERS_RYUK_DISABLED: "true"
+        run: npm run test:integration
+
+  ###############################################################################
+  # Job 2 – Build, push image, run DB migrations, deploy
+  #         *only if Job 1 succeeded*
+  ###############################################################################
+  build-and-push:
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    name: Build, Push to ECR, Run Migrations, Deploy
     permissions:
-      id-token: write # Required for OIDC
-      contents: read   # Required to checkout the code
+      id-token: write   # OIDC for AWS
+      contents: read
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::699498176916:role/GitHubAction-OmsStagingDeployRole
@@ -37,7 +74,7 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, tag, and push image to Amazon ECR
+      - name: Build, tag & push image
         id: build-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
