@@ -49,7 +49,7 @@ jobs:
         run: npm run test:integration
 
   ###############################################################################
-  # Job 2 – Build, push image, run DB migrations, deploy
+  # Job 2 – Build, push image, deploy
   #         *only if Job 1 succeeded*
   ###############################################################################
   build-and-push:
@@ -58,7 +58,7 @@ jobs:
     name: Build, Push to ECR, Run Migrations, Deploy
     permissions:
       id-token: write   # OIDC for AWS
-      contents: read
+      contents: read    # checkout
 
     steps:
       - name: Checkout code
@@ -83,57 +83,6 @@ jobs:
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image_uri=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
-
-      - name: Download current migration task definition
-        id: download-migration-task-def
-        run: |
-          aws ecs describe-task-definition --task-definition ${{ env.ECS_MIGRATION_TASK_DEFINITION_FAMILY }} --query taskDefinition > migration-task-definition.json
-          echo "task_def_arn=$(jq -r .taskDefinitionArn migration-task-definition.json)" >> $GITHUB_OUTPUT
-
-      - name: Update migration task definition with new image and register
-        id: update-migration-task-def
-        run: |
-          # This jq cleaning is still necessary as we are using aws cli directly
-          cat migration-task-definition.json | \
-          jq '.containerDefinitions[0].image = "${{ steps.build-image.outputs.image_uri }}"' | \
-          jq 'del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.compatibilities) | del(.registeredAt) | del(.registeredBy) | del(.tags) | del(.ephemeralStorage) | del(.pidMode) | del(.ipcMode) | del(.enableFaultInjection) | del(.inferenceAccelerators) | del(.placementConstraints) | del(.proxyConfiguration)' > updated-migration-task-definition.json
-          # Added a few more common keys that describe-task-definition might return but are not valid for register. Adjust as needed.
-
-          aws ecs register-task-definition --cli-input-json file://updated-migration-task-definition.json --query taskDefinition.taskDefinitionArn --output text > new-migration-task-def-arn.txt
-          echo "new_task_def_arn=$(cat new-migration-task-def-arn.txt)" >> $GITHUB_OUTPUT
-          echo "Registered new migration task definition: $(cat new-migration-task-def-arn.txt)"
-
-      - name: Run DB Migrations on ECS
-        id: run-migrations
-        env:
-          SUBNET_ID: subnet-043799a1fff09b6f9
-          SECURITY_GROUP_ID: sg-09c6dd87cf7ce4b0d
-        run: |
-          echo "Running migrations with task definition: ${{ steps.update-migration-task-def.outputs.new_task_def_arn }}"
-          MIGRATION_TASK_ARN=$(aws ecs run-task \
-            --cluster ${{ env.ECS_CLUSTER_NAME }} \
-            --task-definition ${{ steps.update-migration-task-def.outputs.new_task_def_arn }} \
-            --launch-type FARGATE \
-            --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_ID],securityGroups=[$SECURITY_GROUP_ID],assignPublicIp=ENABLED}" \
-            --query 'tasks[0].taskArn' --output text)
-
-          if [ -z "$MIGRATION_TASK_ARN" ]; then
-            echo "Failed to start migration task."
-            exit 1
-          fi
-          echo "Migration task started: $MIGRATION_TASK_ARN"
-
-          echo "Waiting for migration task to complete..."
-          aws ecs wait tasks-stopped --cluster ${{ env.ECS_CLUSTER_NAME }} --tasks $MIGRATION_TASK_ARN
-
-          MIGRATION_EXIT_CODE=$(aws ecs describe-tasks --cluster ${{ env.ECS_CLUSTER_NAME }} --tasks $MIGRATION_TASK_ARN --query "tasks[0].containers[?name=='${{ env.MIGRATION_CONTAINER_NAME }}'].exitCode | [0]" --output text)
-          echo "Migration task container exit code: $MIGRATION_EXIT_CODE"
-          if [ "$MIGRATION_EXIT_CODE" != "0" ]; then
-            echo "Migration task failed with exit code $MIGRATION_EXIT_CODE."
-            # Example: aws logs get-log-events --log-group-name /ecs/${{ env.ECS_MIGRATION_TASK_DEFINITION_FAMILY }} --log-stream-name ecs/${{ env.MIGRATION_CONTAINER_NAME }}/$(echo $MIGRATION_TASK_ARN | cut -d "/" -f3) --limit 50
-            exit 1
-          fi
-          echo "Migrations completed successfully."
 
       - name: Download current app task definition
         id: download-app-task-def
