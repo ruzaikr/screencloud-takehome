@@ -7,8 +7,8 @@ import * as schema from "./schema";
 import config from '../config';
 
 const connectionString =
-    process.env.NODE_ENV === "test"
-        ? config.DATABASE_URL!
+    config.NODE_ENV === "test"
+        ? `${config.DATABASE_URL!}?sslmode=disable`
         : `${config.DATABASE_URL!}?sslmode=no-verify`;
 
 const pool = new Pool({
