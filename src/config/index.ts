@@ -26,7 +26,12 @@ function getNumericEnvVar(key: string, isOptional: boolean = false): number {
 interface AppConfig {
     NODE_ENV: string;
     PORT: number;
-    DATABASE_URL: string;
+    DATABASE_HOST: string,
+    DATABASE_PORT: number,
+    DATABASE_USER: string,
+    DATABASE_PASSWORD: string,
+    DATABASE_NAME: string,
+    DATABASE_CA: string,
     RESERVATION_TTL_MINUTES: number;
     SHIPPING_COST_CENTS_PER_KG_PER_KM: number;
     SHIPPING_COST_MAX_PERCENTAGE_OF_ORDER_VALUE: number;
@@ -37,7 +42,12 @@ interface AppConfig {
 const config: AppConfig = {
     NODE_ENV: getEnvVar('NODE_ENV', true) || 'dev',
     PORT: getNumericEnvVar('PORT'),
-    DATABASE_URL: getEnvVar('DATABASE_URL'),
+    DATABASE_HOST: getEnvVar('DATABASE_HOST'),
+    DATABASE_PORT: getNumericEnvVar('DATABASE_PORT'),
+    DATABASE_USER: getEnvVar('DATABASE_USER'),
+    DATABASE_PASSWORD: getEnvVar('DATABASE_PASSWORD'),
+    DATABASE_NAME: getEnvVar('DATABASE_NAME'),
+    DATABASE_CA: getEnvVar('DATABASE_CA'),
     RESERVATION_TTL_MINUTES: getNumericEnvVar('RESERVATION_TTL_MINUTES'),
     SHIPPING_COST_CENTS_PER_KG_PER_KM: getNumericEnvVar('SHIPPING_COST_CENTS_PER_KG_PER_KM'),
     SHIPPING_COST_MAX_PERCENTAGE_OF_ORDER_VALUE: getNumericEnvVar('SHIPPING_COST_MAX_PERCENTAGE_OF_ORDER_VALUE'),

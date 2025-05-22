@@ -7,7 +7,12 @@ import * as schema from "./schema";
 import config from '../config';
 
 const pool = new Pool({
-    connectionString: config.DATABASE_URL,
+    host: config.DATABASE_HOST,
+    port: config.DATABASE_PORT,
+    user: config.DATABASE_USER,
+    password: config.DATABASE_PASSWORD,
+    database: config.DATABASE_NAME,
+    ssl: { ca: config.DATABASE_CA },
 });
 
 // Initialize Drizzle with the schema for schema-aware client and transactions
