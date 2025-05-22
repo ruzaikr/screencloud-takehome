@@ -9,7 +9,7 @@ env:
   AWS_REGION: ap-southeast-1
   ECR_REPOSITORY: screencloud-takehome-staging
   ECS_CLUSTER_NAME: oms-staging-cluster
-  ECS_SERVICE_NAME: oms-app-staging-service-lvba3625
+  ECS_SERVICE_NAME: oms-app-staging-service-dnfgravf
   ECS_APP_TASK_DEFINITION_FAMILY: oms-app-staging
   ECS_MIGRATION_TASK_DEFINITION_FAMILY: oms-db-migrations-staging
   APP_CONTAINER_NAME: oms-app
