@@ -5,6 +5,6 @@ export default defineConfig({
     out: "./drizzle",
     dialect: "postgresql",
     dbCredentials: {
-        url: "postgresql://oms_staging:l8syz6gMr9m9FBBu4Dxn@oms-staging-default-db.cha2ik2us81v.ap-southeast-1.rds.amazonaws.com:5432/oms_staging?sslmode=no-verify",
+        url: process.env.DATABASE_URL!,
     }
 })

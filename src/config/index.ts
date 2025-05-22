@@ -26,6 +26,7 @@ function getNumericEnvVar(key: string, isOptional: boolean = false): number {
 interface AppConfig {
     NODE_ENV: string;
     PORT: number;
+    DATABASE_URL: string;
     DATABASE_HOST: string,
     DATABASE_PORT: number,
     DATABASE_USER: string,
@@ -42,6 +43,7 @@ interface AppConfig {
 const config: AppConfig = {
     NODE_ENV: getEnvVar('NODE_ENV', true) || 'dev',
     PORT: getNumericEnvVar('PORT'),
+    DATABASE_URL: getEnvVar('DATABASE_URL'),
     DATABASE_HOST: getEnvVar('DATABASE_HOST'),
     DATABASE_PORT: getNumericEnvVar('DATABASE_PORT'),
     DATABASE_USER: getEnvVar('DATABASE_USER'),
