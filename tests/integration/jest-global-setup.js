@@ -20,7 +20,7 @@ module.exports = async () => {
     process.env.AUTH0_DOMAIN = "https://test-domain.auth0.com";
     process.env.AUTH0_AUDIENCE = "https://test-audience.com";
     process.env.DATABASE_HOST = "dummy_for_unit_tests";
-    process.env.DATABASE_PORT = "dummy_for_unit_tests";
+    process.env.DATABASE_PORT = 5432;
     process.env.DATABASE_USER = "dummy_for_unit_tests";
     process.env.DATABASE_PASSWORD = "dummy_for_unit_tests";
     process.env.DATABASE_NAME = "dummy_for_unit_tests";
