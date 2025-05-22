@@ -5,11 +5,6 @@ export default defineConfig({
     out: "./drizzle",
     dialect: "postgresql",
     dbCredentials: {
-        host: process.env.DATABASE_HOST!,
-        port: parseInt(process.env.DATABASE_PORT!),
-        user: process.env.DATABASE_USER!,
-        password: process.env.DATABASE_PASSWORD!,
-        database: process.env.DATABASE_NAME!,
-        ssl: { ca: process.env.DATABASE_CA! },
+        url: "postgresql://oms_staging:l8syz6gMr9m9FBBu4Dxn@oms-staging-default-db.cha2ik2us81v.ap-southeast-1.rds.amazonaws.com:5432/oms_staging?sslmode=no-verify",
     }
 })
