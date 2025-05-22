@@ -15,6 +15,29 @@ const pool = new Pool({
     connectionString: connectionString,
 });
 
+type PgError = Error & { code?: string };
+
+function isAdminShutdown(err: unknown): err is PgError & { code: "57P01" } {
+    return (
+        typeof err === "object" &&
+        err !== null &&
+        "code" in err &&
+        (err as PgError).code === "57P01"
+    );
+}
+
+/**
+ * Prevent “Unhandled 'error' event” when the test container is shut down.
+ * 57P01 = admin_shutdown (see https://www.postgresql.org/docs/current/errcodes-appendix.html)
+ */
+pool.on("error", (err, _client) => {
+    if (process.env.NODE_ENV === "test" && isAdminShutdown(err)) {
+        // Expected when the Testcontainer stops – swallow it.
+        return;
+    }
+    console.error("Unexpected pg pool error:", err);
+});
+
 // Initialize Drizzle with the schema for schema-aware client and transactions
 export const db: NodePgDatabase<typeof schema> = drizzle(pool, { schema });
 
