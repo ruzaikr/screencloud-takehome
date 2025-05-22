@@ -6,10 +6,11 @@ import type { PgDatabase } from 'drizzle-orm/pg-core';
 import * as schema from "./schema";
 import config from '../config';
 
-console.log(config.DATABASE_CA);
-
 const pool = new Pool({
-    connectionString: config.DATABASE_URL
+    connectionString: config.DATABASE_URL,
+    ssl: {
+        ca: config.DATABASE_CA
+    },
 });
 
 // Initialize Drizzle with the schema for schema-aware client and transactions
