@@ -6,8 +6,9 @@ import type { PgDatabase } from 'drizzle-orm/pg-core';
 import * as schema from "./schema";
 import config from '../config';
 
+const disableSslEnvs = ["test", "dev"];
 const connectionString =
-    config.NODE_ENV === "test"
+    disableSslEnvs.includes(config.NODE_ENV)
         ? `${config.DATABASE_URL!}?sslmode=disable`
         : `${config.DATABASE_URL!}?sslmode=no-verify`;
 
