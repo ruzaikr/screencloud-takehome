@@ -130,6 +130,8 @@ npm run docker:dev:down
 |-----------------------------------------------|----------|---------------------------------------|----------------------------------------------------|
 | `PORT`                                        | yes      | `3002`                                | HTTP port API listens on.                          |
 | `DATABASE_URL`                                | yes      | `postgres://user:pass@db:5432/oms_db` | Postgres connection string.                        |
+| `AUTH0_DOMAIN`                                | yes      | `your-tenant.auth0.com`               | Your Auth0 tenant domain.                          |
+| `AUTH0_AUDIENCE`                              | yes      | `https://api.your-app.com`            | The audience identifier for this API in Auth0.     |
 | `RESERVATION_TTL_MINUTES`                     | yes      | `10`                                  | How long a provisional reservation stays `ACTIVE`. |
 | `SHIPPING_COST_CENTS_PER_KG_PER_KM`           | yes      | `1`                                   | Rate for shipping cost calculation.                |
 | `SHIPPING_COST_MAX_PERCENTAGE_OF_ORDER_VALUE` | yes      | `15`                                  | Max % of post‑discount value shipping may cost.    |

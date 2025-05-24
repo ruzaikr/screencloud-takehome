@@ -6,8 +6,37 @@ import type { PgDatabase } from 'drizzle-orm/pg-core';
 import * as schema from "./schema";
 import config from '../config';
 
+const disableSslEnvs = ["test", "dev"];
+const connectionString =
+    disableSslEnvs.includes(config.NODE_ENV)
+        ? `${config.DATABASE_URL!}?sslmode=disable`
+        : `${config.DATABASE_URL!}?sslmode=no-verify`;
+
 const pool = new Pool({
-    connectionString: config.DATABASE_URL,
+    connectionString: connectionString,
+});
+
+type PgError = Error & { code?: string };
+
+function isAdminShutdown(err: unknown): err is PgError & { code: "57P01" } {
+    return (
+        typeof err === "object" &&
+        err !== null &&
+        "code" in err &&
+        (err as PgError).code === "57P01"
+    );
+}
+
+/**
+ * Prevent “Unhandled 'error' event” when the test container is shut down.
+ * 57P01 = admin_shutdown (see https://www.postgresql.org/docs/current/errcodes-appendix.html)
+ */
+pool.on("error", (err, _client) => {
+    if (process.env.NODE_ENV === "test" && isAdminShutdown(err)) {
+        // Expected when the Testcontainer stops – swallow it.
+        return;
+    }
+    console.error("Unexpected pg pool error:", err);
 });
 
 // Initialize Drizzle with the schema for schema-aware client and transactions
