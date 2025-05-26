@@ -215,4 +215,38 @@ describe('Order Service Integration Tests - createWalkInOrder', () => {
         // Restore original function
         inventoryRepo.updateInventoryAndLogChanges = originalUpdateInventory;
     });
+
+    it('only one of two simultaneous orders for the last item succeeds', async () => {
+
+        // Total available P1: WH1 has 10, WH2 has 5. Total = 15.
+        const request: CreateOrderRequest = {
+            shippingAddress: customerShippingAddress,
+            requestedProducts: [{ productId: product1.id, quantity: 15 }], // Request all available stock
+        };
+
+        // Act – kick off two promises concurrently
+        const [res1, res2] = await Promise.allSettled([
+            orderService.createWalkInOrder(request),
+            orderService.createWalkInOrder(request),
+        ]);
+
+        // Assert – exactly one fulfilled, one rejected
+        const fulfilledPromises = [res1, res2].filter(r => r.status === 'fulfilled');
+        const rejectedPromises = [res1, res2].filter(r => r.status === 'rejected');
+
+        expect(fulfilledPromises.length).toBe(1);
+        expect(rejectedPromises.length).toBe(1);
+
+        // Assert the rejected reason
+        const rejectedReason = (rejectedPromises[0] as PromiseRejectedResult).reason;
+        expect(rejectedReason).toBeInstanceOf(InsufficientInventoryError);
+        expect(rejectedReason.message).toContain(`Insufficient inventory for product ID ${product1.id}`);
+
+        // Verify DB state
+        // Inventory for product1 should be 0 across both warehouses
+        expect(await getInventoryQuantity(product1.id, warehouse1.id)).toBe(0);
+        expect(await getInventoryQuantity(product1.id, warehouse2.id)).toBe(0);
+
+    });
+
 });
