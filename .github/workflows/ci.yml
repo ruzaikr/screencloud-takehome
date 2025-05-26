@@ -1,0 +1,107 @@
+name: Deploy to Staging (AWS ECS)
+
+on:
+  push:
+    branches:
+      - staging
+
+env:
+  AWS_REGION: ap-southeast-1
+  ECR_REPOSITORY: screencloud-takehome-staging
+  ECS_CLUSTER_NAME: oms-staging-cluster
+  ECS_SERVICE_NAME: oms-app-staging-service-dnfgravf
+  ECS_APP_TASK_DEFINITION_FAMILY: oms-app-staging
+  ECS_MIGRATION_TASK_DEFINITION_FAMILY: oms-db-migrations-staging
+  APP_CONTAINER_NAME: oms-app
+  MIGRATION_CONTAINER_NAME: oms-db-migrations
+
+###############################################################################
+# Job 1 – Run ESLint + Jest (unit & integration)
+###############################################################################
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    name: Lint & Test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20 with npm cache
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies (prod + dev)
+        run: npm ci
+
+      - name: Lint source
+        run: npm run lint
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Run integration tests
+        env:
+          # Testcontainers works on GitHub-hosted runners out of the box;
+          # these vars just keep Jest noise down.
+          TESTCONTAINERS_RYUK_DISABLED: "true"
+        run: npm run test:integration
+
+  ###############################################################################
+  # Job 2 – Build, push image, deploy
+  #         *only if Job 1 succeeded*
+  ###############################################################################
+  build-and-push:
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    name: Build, Push to ECR, Run Migrations, Deploy
+    permissions:
+      id-token: write   # OIDC for AWS
+      contents: read    # checkout
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::699498176916:role/GitHubAction-OmsStagingDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag & push image
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image_uri=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Download current app task definition
+        id: download-app-task-def
+        run: |
+          aws ecs describe-task-definition --task-definition ${{ env.ECS_APP_TASK_DEFINITION_FAMILY }} --query taskDefinition > app-task-definition.json
+
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: app-task-definition.json # Original downloaded definition
+          container-name: ${{ env.APP_CONTAINER_NAME }}
+          image: ${{ steps.build-image.outputs.image_uri }}
+        # This step outputs a file path to ${{ steps.task-def.outputs.task-definition }}
+
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2 # <<<---- VERSION UPDATED HERE
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }} # Use the output from render-task-definition directly
+          service: ${{ env.ECS_SERVICE_NAME }}
+          cluster: ${{ env.ECS_CLUSTER_NAME }}
+          wait-for-service-stability: true

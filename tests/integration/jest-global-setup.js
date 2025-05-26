@@ -1,6 +1,5 @@
 const { PostgreSqlContainer } = require("@testcontainers/postgresql");
 const { execSync } = require("child_process");
-const path = require("path");
 
 module.exports = async () => {
     console.log("\nSetting up PostgreSQL Testcontainer...");
@@ -14,10 +13,18 @@ module.exports = async () => {
 
     process.env.DATABASE_URL = container.getConnectionUri();
     process.env.PORT = 1;
-    process.env.NODE_ENV = 'test';
+    process.env.NODE_ENV = "test";
     process.env.RESERVATION_TTL_MINUTES = 10
-    process.env.SHIPPING_COST_CENTS_PER_KG_PER_KM = '1';
-    process.env.SHIPPING_COST_MAX_PERCENTAGE_OF_ORDER_VALUE = '15';
+    process.env.SHIPPING_COST_CENTS_PER_KG_PER_KM = "1";
+    process.env.SHIPPING_COST_MAX_PERCENTAGE_OF_ORDER_VALUE = "15";
+    process.env.AUTH0_DOMAIN = "https://test-domain.auth0.com";
+    process.env.AUTH0_AUDIENCE = "https://test-audience.com";
+    process.env.DATABASE_HOST = "dummy_for_integration_tests";
+    process.env.DATABASE_PORT = 5432;
+    process.env.DATABASE_USER = "dummy_for_integration_tests";
+    process.env.DATABASE_PASSWORD = "dummy_for_integration_tests";
+    process.env.DATABASE_NAME = "dummy_for_integration_tests";
+    process.env.DATABASE_CA= "dummy_for_integration_tests";
 
     console.log(`Testcontainer DATABASE_URL: ${process.env.DATABASE_URL}`);
     console.log("Running Drizzle migrations...");
