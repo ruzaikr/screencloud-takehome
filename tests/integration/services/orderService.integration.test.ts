@@ -56,10 +56,6 @@ describe('Order Service Integration Tests - createWalkInOrder', () => {
     };
 
     it('should successfully create an order, update inventory, and log changes', async () => {
-        // NY to Chicago is approx 1145.036 km. -> shippingCostCentsPerKg = Math.round(1145.036 * 1) = 1145 cents/kg
-        // Warehouse 2 (NY) should be preferred for shipping cost if inventory allows.
-        // Product1: 5kg. CostPerKg for WH2 (NY) = 1145 cents/kg
-        // Product2: 0.5kg. CostPerKg for WH1 (LA) = 2802 cents/kg
 
         const request: CreateOrderRequest = {
             shippingAddress: customerShippingAddress,
@@ -80,13 +76,6 @@ describe('Order Service Integration Tests - createWalkInOrder', () => {
         expect(orderInDb?.discountCents).toBe(Math.round(100000 * 2 * 0.10)); // 10% of 2 TVs = 20000
 
         // Shipping calc:
-        // P1 (TVs) x2 from WH2 (NY): 2 * 5kg = 10kg. Math.ceil(10kg * 1145 cents/kg) = 11450 cents.
-        //   Wait, WH2 has 5 P1. Request is 2 P1. So all 2 P1 from WH2.
-        // P2 (Radios) x10 from WH1 (LA): 10 * 0.5kg = 5kg. Math.ceil(5kg * 2802 cents/kg) = 14010 cents.
-        //   No, allocation prefers cheaper shipping if available.
-        //   P2 from WH2 (NY): 0.5kg * 1145 cents/kg * 10 items = Math.ceil(5725) = 5725 cents if all 10 radios are from NY and NY has them.
-        //   WH1 (LA): product1 (10), product2 (100)
-        //   WH2 (NY): product1 (5)
         //   Requested: P1: 2, P2: 10
         //   Sorted Warehouses (to Chicago): NY (WH2) first, then LA (WH1)
         //   Allocate P1 (2 units):
@@ -178,19 +167,6 @@ describe('Order Service Integration Tests - createWalkInOrder', () => {
         const inventoryRepo = require('../../../src/repositories/inventoryRepository');
         const originalUpdateInventory = inventoryRepo.updateInventoryAndLogChanges;
         inventoryRepo.updateInventoryAndLogChanges = jest.fn().mockImplementationOnce(async () => {
-            // Simulate some successful DB writes for order/orderlines if they happened before inventory update mock
-            // For this test, assume order/orderlines are created *before* inventory update is called to fail
-            // Order of operations in service:
-            // 1. calc costs (reads)
-            // 2. TX start
-            // 3. getInventoryForProducts (reads, locks)
-            // 4. getReservedInventory (reads)
-            // 5. performInventoryAllocation (logic)
-            // 6. calc shipping, check validity
-            // 7. inventoryRepository.updateInventoryAndLogChanges  <-- MOCK THIS TO FAIL
-            // 8. orderRepository.createOrderAndLines
-            // If (7) fails, (8) should not run, and TX should roll back.
-
             // So, if updateInventoryAndLogChanges itself throws, Drizzle handles rollback.
             throw new Error("Simulated DB error during inventory update");
         });
