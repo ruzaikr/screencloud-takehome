@@ -4,7 +4,9 @@ import {
     volumeDiscounts,
     warehouses,
     inventory as inventoryTable,
-    orderLines, inventoryLog,
+    inventoryLog,
+    orders,
+    orderLines,
 } from "./schema";
 
 async function seed() {
@@ -14,8 +16,10 @@ async function seed() {
     // Delete from tables that reference other tables first.
 
     console.log('Truncating order_lines table...');
-    // Ensure 'orderLines' is the correct schema object for your 'order_lines' table
     await db.delete(orderLines);
+
+    console.log('Truncating orders table...');
+    await db.delete(orders);
 
     console.log('Truncating volume_discounts table...');
     await db.delete(volumeDiscounts);
