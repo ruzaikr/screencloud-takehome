@@ -122,15 +122,12 @@ describe('Shared Service Helpers', () => {
             const reservedInventory: ReservedInventoryByWarehouse = {};
 
             expect(() => performInventoryAllocation(productDetailsMap, sortedWarehouses, currentInventory, reservedInventory))
-                .toThrow(InventoryAllocationError);
-            expect(() => performInventoryAllocation(productDetailsMap, sortedWarehouses, currentInventory, reservedInventory))
-                .toThrow('Insufficient inventory for product ID prod1. Requested: 10, Available (after reservations): 5.');
+                .toThrow(new InventoryAllocationError('Insufficient inventory for product ID prod1. Requested: 10, Available (after reservations): 5.'));
         });
 
         it('should handle empty sortedWarehouses gracefully (leading to insufficient inventory)', () => {
-            const currentInventory: ProductInventoryByWarehouse = { 'wh1': { 'prod1': 100 }};
             const emptyWarehouses: WarehouseShippingInfo[] = [];
-            expect(() => performInventoryAllocation(productDetailsMap, emptyWarehouses, currentInventory, {}))
+            expect(() => performInventoryAllocation(productDetailsMap, emptyWarehouses, {}, {}))
                 .toThrow(new InventoryAllocationError('Insufficient inventory for product ID prod1. Requested: 10, Available (after reservations): 0.'));
         });
 

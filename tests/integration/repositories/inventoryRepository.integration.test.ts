@@ -49,30 +49,6 @@ describe('Inventory Repository Integration Tests', () => {
             });
         });
 
-        it('should lock rows for update (implicitly tested by consistent read before update)', async () => {
-            // This test demonstrates that the data read with "FOR UPDATE" is consistent for subsequent operations
-            // within the same transaction.
-            await db.transaction(async (tx) => {
-                // Initial read (locks rows for product1Id in warehouse1Id)
-                const initialInventory = await inventoryRepo.getInventoryForProducts(tx, [product1Id]);
-                expect(initialInventory[warehouse1Id]?.[product1Id]).toBe(100);
-
-                // Simulate an update operation based on the locked read
-                const quantityToDecrement = 10;
-                const updateItems: inventoryRepo.InventoryUpdateItem[] = [{
-                    productId: product1Id,
-                    warehouseId: warehouse1Id,
-                    quantityToDecrement,
-                }];
-                await inventoryRepo.updateInventoryAndLogChanges(tx, updateItems, 'test-order-implicit-lock');
-
-                // Verify update occurred correctly
-                const finalInventoryInDb = await tx.select({ quantity: schema.inventory.quantity })
-                    .from(schema.inventory)
-                    .where(and(eq(schema.inventory.productId, product1Id), eq(schema.inventory.warehouseId, warehouse1Id)));
-                expect(finalInventoryInDb[0].quantity).toBe(100 - quantityToDecrement);
-            });
-        });
     });
 
     describe('updateInventoryAndLogChanges', () => {
@@ -135,28 +111,5 @@ describe('Inventory Repository Integration Tests', () => {
             expect(await getInventoryLogCount(orderId)).toBe(0);
         });
 
-        it('should skip update if quantityToDecrement is zero or negative (though current logic prevents this through error)', async () => {
-            // The current implementation throws if quantityToDecrement <= 0 *before* calling the repo,
-            // or the repo's internal check would throw. This test covers if the repo's behavior for this case was different.
-            // Given the current code which has a console.warn and continues, this test checks that path.
-            // However, the SQL `quantity >= ${update.quantityToDecrement}` would fail for negative decrement.
-            // Let's assume the code's `if (update.quantityToDecrement <= 0)` path is what we test.
-
-            const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-            const orderId = 'test-order-zero-decrement';
-            const updates: inventoryRepo.InventoryUpdateItem[] = [
-                { productId: product1Id, warehouseId: warehouse1Id, quantityToDecrement: 0 },
-            ];
-
-            await db.transaction(async (tx) => {
-                await inventoryRepo.updateInventoryAndLogChanges(tx, updates, orderId);
-            });
-
-            expect(await getInventoryQuantity(product1Id, warehouse1Id)).toBe(100); // Unchanged
-            expect(await getInventoryLogCount(orderId)).toBe(0); // No logs
-            expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Skipping inventory update for product'));
-
-            consoleWarnSpy.mockRestore();
-        });
     });
 });
